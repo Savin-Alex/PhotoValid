@@ -1,566 +1,589 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DV Lottery Photo Validator</title>
-  <style>
-    :root {
-      --bg-primary: #fff;
-      --bg-secondary: #f8fafc;
-      --bg-header: linear-gradient(135deg,#667eea,#764ba2);
-      --text-primary: #0b1220;
-      --text-secondary: #475569;
-      --border: #e5e7eb;
-      --drop-bg: #f8fafc;
-      --drop-border: #cbd5e1;
-      --shadow: rgba(0,0,0,.3);
-    }
-    
-    .dark {
-      --bg-primary: #1e293b;
-      --bg-secondary: #334155;
-      --bg-header: linear-gradient(135deg,#4c1d95,#7c3aed);
-      --text-primary: #f1f5f9;
-      --text-secondary: #cbd5e1;
-      --border: #475569;
-      --drop-bg: #334155;
-      --drop-border: #64748b;
-      --shadow: rgba(0,0,0,.6);
-    }
-    
-    body { 
-      font-family: ui-sans-serif,system-ui; 
-      margin:0; 
-      background:var(--bg-primary); 
-      color:var(--text-primary); 
-      transition: background 0.3s, color 0.3s;
-    }
-    .shell{max-width:1100px;margin:40px auto;background:var(--bg-primary);border-radius:16px;box-shadow:0 20px 60px var(--shadow);overflow:hidden;transition: background 0.3s, box-shadow 0.3s}
-    header{background:var(--bg-header);color:#fff;padding:24px 28px;display:flex;justify-content:space-between;align-items:center}
-    main{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:24px}
-    @media(max-width:900px){main{grid-template-columns:1fr}}
-    .drop{border:3px dashed var(--drop-border);border-radius:12px;padding:36px;text-align:center;background:var(--drop-bg);cursor:pointer;transition: all 0.3s}
-    .btn{background:var(--bg-header);color:#fff;border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;transition: opacity 0.3s}
-    .btn:hover{opacity:0.9}
-    .param{border:1px solid var(--border);border-radius:10px;padding:12px;transition: border 0.3s}
-    .row{display:flex;justify-content:space-between;align-items:center}
-    .status{padding:2px 10px;border-radius:999px;font-size:.85rem;font-weight:700}
-    .pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.warn{background:#fef3c7;color:#92400e}
-    /* ✅ FIX: Pixel-perfect overlay positioning */
-    .photo-container{position:relative;background:#f1f5f9;border-radius:12px;height:420px;display:grid;place-items:center;overflow:hidden}
-    #preview{max-width:100%;max-height:420px;display:none;position:relative;z-index:1;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
-    #overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:auto;cursor:crosshair;z-index:2;touch-action:none}
-    .header-controls{display:flex;gap:12px;align-items:center}
-    .fix{color:#1d4ed8;font-size:0.9rem;margin-top:4px}
-    .rec{color:var(--text-secondary);font-size:0.9rem}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PhotoValid – DV Lottery Photo Validator</title>
+<style>
+  :root{
+    --bg:#f7f7fb; --card:#ffffff; --ink:#0f172a; --sub:#475569; --muted:#94a3b8;
+    --pass:#16a34a; --warn:#f59e0b; --fail:#ef4444; --brand:#2563eb;
+    --border:#e2e8f0; --shadow:0 6px 20px rgba(2,6,23,.06);
+  }
+  html.dark{ --bg:#0b1020; --card:#12182a; --ink:#e6edf6; --sub:#97a3b5; --muted:#6b7280; --border:#1f2b43; --shadow:0 6px 22px rgba(0,0,0,.35); }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";transition:background .3s, color .3s}
+  .container{max-width:1100px;margin:24px auto;padding:16px}
+  header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .title{display:flex;gap:12px;align-items:center}
+  .title h1{margin:0;font-size:20px}
+  .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--ink);padding:8px 10px;border-radius:10px;cursor:pointer;box-shadow:var(--shadow);transition:all .2s}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(2,6,23,.1)}
+  .btn.brand{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.ghost{background:transparent;box-shadow:none}
+  .uploader{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .pane{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;transition:all .3s}
+  .preview-wrap{position:relative;border-radius:12px;overflow:hidden;background:#0b1729;display:flex;align-items:center;justify-content:center;min-height:320px}
+  .preview-wrap img{max-width:100%;height:auto;display:block;user-select:none;-webkit-user-drag:none}
+  canvas#overlay{position:absolute;inset:0;pointer-events:auto;touch-action:none}
+
+  /* Compact validations */
+  .results{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;margin-top:16px;transition:all .3s}
+  .results h3{margin:0 0 8px 0;font-size:16px}
+  .rows{display:grid;gap:8px}
+  .row{border:1px solid var(--border);border-left-width:4px;border-radius:10px;padding:8px 10px;background:var(--card);cursor:pointer;transition:all .2s}
+  .row:hover{transform:translateX(2px)}
+  .row.pass{border-left-color:var(--pass)}
+  .row.warn{border-left-color:var(--warn)}
+  .row.fail{border-left-color:var(--fail)}
+  .summary{display:grid;grid-template-columns:28px 1fr 80px 100px;gap:8px;align-items:center}
+  .summary .status{font-size:18px}
+  .label{font-weight:600}
+  .value,.expected{color:var(--sub);font-variant-numeric:tabular-nums;font-size:13px}
+  .details{display:none;margin-top:6px;color:var(--sub);font-size:13px;border-top:1px solid var(--border);padding-top:6px}
+  .row.open .details{display:block}
+  .rec{margin-bottom:4px}
+  .fix{color:var(--brand);font-weight:500}
+
+  /* Score meter */
+  .score{display:flex;align-items:center;gap:12px;margin:8px 0 14px}
+  .score svg{width:56px;height:56px}
+  .score .pct{font-size:20px;font-weight:700}
+  .meter-bg{stroke:#e5e7eb;opacity:.4}
+  html.dark .meter-bg{stroke:#14203a}
+  .meter-val{stroke:var(--brand);transition:stroke-dashoffset .6s ease, stroke .3s}
+
+  /* Upload dropzone */
+  .drop-zone{border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;background:var(--bg);cursor:pointer;transition:all .3s;margin-bottom:12px}
+  .drop-zone:hover,.drop-zone.drag-over{border-color:var(--brand);background:rgba(37,99,235,.05)}
+  .drop-zone.has-file{border-style:solid;border-color:var(--pass)}
+
+  /* Footer disclaimer */
+  footer.disclaimer{margin-top:16px;background:transparent;color:var(--sub);border-top:1px dashed var(--border);padding-top:12px;font-size:12.5px}
+
+  /* Loading spinner */
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* Responsive */
+  @media (max-width:900px){ 
+    .uploader{grid-template-columns:1fr} 
+    .summary{grid-template-columns:24px 1fr 60px 80px}
+  }
+  @media (max-width:520px){ 
+    .summary{grid-template-columns:20px 1fr} 
+    .value,.expected{display:none}
+    .actions{justify-content:center}
+  }
+</style>
 </head>
 <body>
-<div class="shell">
-  <header>
-    <div>
-      <h1 id="title">📷 DV Lottery Photo Validator</h1>
-      <p>Production API-backed checker (FastAPI)</p>
-    </div>
-    <div class="header-controls">
-      <button class="btn" id="langToggle">🇬🇧 / 🇷🇺</button>
-      <button class="btn" id="darkToggle">🌓</button>
-    </div>
-  </header>
-  <main>
-    <section>
-      <div class="drop" id="drop" role="button" tabindex="0">
-        <p id="uploadHint"><strong>Upload JPEG</strong> — 600×600 to 1200×1200 px, ≤ 240 KB</p>
-        <input id="file" type="file" accept="image/jpeg" hidden />
-        <p style="margin-top:10px;color:#64748b">Click or drag&drop</p>
+  <div class="container">
+    <header>
+      <div class="title">
+        <span>📷</span>
+        <h1 data-i18n="app_title">DV Lottery Photo Validator</h1>
       </div>
-      <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-        <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:var(--text-secondary)">
-          <input type="checkbox" id="showHints" checked>
-          Show alignment hints
-        </label>
-        <button class="btn" id="toggleManual" style="display:none;font-size:0.85rem;padding:4px 12px">✏️ Adjust Lines</button>
-        <button class="btn" id="saveManual" style="display:none;font-size:0.85rem;padding:4px 12px;background:#22c55e">💾 Save & Re-Validate</button>
-        <button class="btn" id="resetManual" style="display:none;font-size:0.85rem;padding:4px 12px">↺ Reset</button>
+      <div class="actions">
+        <button id="langToggle" class="btn">EN / RU</button>
+        <button id="darkToggle" class="btn ghost">🌓</button>
+        <button id="validateBtn" class="btn brand" data-i18n="validate_btn" disabled>Validate</button>
       </div>
-      <div class="photo-container">
-        <img id="preview" draggable="false" alt="Photo preview" />
-        <canvas id="overlay"></canvas>
-        <div id="placeholder" style="color:#94a3b8;position:absolute">No image</div>
+    </header>
+
+    <section class="uploader">
+      <div class="pane">
+        <!-- Drop zone for file upload -->
+        <div id="dropZone" class="drop-zone" data-i18n-title="upload_drop">
+          <div>📤 <strong data-i18n="upload_title">Drag & drop your photo here</strong></div>
+          <div style="color:var(--sub);margin-top:8px" data-i18n="upload_subtitle">or click to browse</div>
+          <input id="fileInput" type="file" accept="image/*" hidden />
+        </div>
+        
+        <div class="preview-wrap" style="display:none" id="previewWrap">
+          <img id="photo" alt="preview" draggable="false" />
+          <canvas id="overlay"></canvas>
+        </div>
+        
+        <div style="display:none;gap:10px;align-items:center;justify-content:space-between;margin-top:8px" id="controls">
+          <label><input type="checkbox" id="showHints" checked/> <span data-i18n="show_hints">Show alignment hints</span></label>
+          <div style="display:flex;gap:8px">
+            <button id="manualBtn" class="btn" data-i18n="manual_btn">Adjust Lines</button>
+            <button id="saveManualBtn" class="btn brand" style="display:none" data-i18n="save_btn">Save & Re‑check</button>
+            <button id="resetManualBtn" class="btn" style="display:none" data-i18n="reset_btn">Reset</button>
+          </div>
+        </div>
       </div>
-      <button class="btn" id="run" style="margin-top:12px;display:none">Validate</button>
+
+      <div class="pane">
+        <div class="score">
+          <svg viewBox="0 0 36 36" role="img" aria-label="score">
+            <circle class="meter-bg" cx="18" cy="18" r="16" fill="none" stroke-width="4"></circle>
+            <circle id="meterVal" class="meter-val" cx="18" cy="18" r="16" fill="none" stroke-width="4" stroke-linecap="round" stroke-dasharray="100 100" stroke-dashoffset="100"></circle>
+          </svg>
+          <div>
+            <div class="pct" id="scorePct">–%</div>
+            <div class="sub" data-i18n="overall_quality">Overall quality</div>
+          </div>
+        </div>
+
+        <div class="results">
+          <h3 data-i18n="checks_title">Validation Results</h3>
+          <div class="rows" id="rows">
+            <div style="text-align:center;color:var(--sub);padding:20px" data-i18n="no_results">
+              Upload and validate a photo to see results
+            </div>
+          </div>
+        </div>
+
+        <footer class="disclaimer" data-i18n="disclaimer">
+          ⚠️ This tool provides automated estimates based on DV Lottery guidelines. Always review your final photo before submission.
+        </footer>
+      </div>
     </section>
-    <section>
-      <div id="score" class="param">
-        <div class="row"><h3>Overall Score</h3><div id="badge" class="status">--</div></div>
-        <div id="num" style="font-size:40px;font-weight:800;margin-top:6px">--</div>
-        <div id="msg" style="color:#475569">Upload a photo to begin</div>
-      </div>
-      <h3 style="margin:16px 0 8px">📐 Technical</h3>
-      <div id="tech" style="display:grid;gap:10px"></div>
-      <h3 style="margin:16px 0 8px">👤 Biometric & Composition</h3>
-      <div id="bio" style="display:grid;gap:10px"></div>
-      <h3 style="margin:16px 0 8px">🧪 Tampering / Photoshop Detection</h3>
-      <div id="tamper" style="display:grid;gap:10px"></div>
-      <p style="color:#f97316;font-size:0.9rem">
-        ⚠️ This automated check only provides an estimate of possible editing.
-        It should not be used as definitive proof of manipulation.
-      </p>
-    </section>
-  </main>
-</div>
+  </div>
+
 <script>
-const api = location.origin.replace(/:\d+$/, '') + ':8000'; // assume backend on 8000
-const drop = document.getElementById('drop');
-const fileInput = document.getElementById('file');
-const runBtn = document.getElementById('run');
-const img = document.getElementById('preview');
-const overlay = document.getElementById('overlay');
-const placeholder = document.getElementById('placeholder');
-
-// ✅ HYBRID MODE: Manual line adjustment
-let manualMode = false;
-const lines = { top: 0.18, eye: 0.60, chin: 0.86 };  // Normalized Y coordinates (0-1)
-const autoLines = { top: 0.18, eye: 0.60, chin: 0.86 };  // Store auto-detected values
-const dragging = { key: null };
-
-// i18n support
-const locales = {
-  en: {
-    title: 'DV Lottery Photo Validator',
-    uploadHint: 'Upload JPEG — 600×600 to 1200×1200 px, ≤ 240 KB',
-    validate: 'Validate',
-    uploadToBegin: 'Upload a photo to begin',
-    analyzing: 'Analyzing…',
-    photoMeets: '✅ Photo meets DV requirements',
-    minorIssues: '⚠️ Minor issues, please fix',
-    doesNotMeet: '❌ Does not meet requirements',
-    current: 'Current:',
-    required: 'Required:',
-    pleaseUploadJpeg: 'Please upload a JPEG image',
-    fileExceeds: 'File exceeds 240KB'
+// ✅ FIX 2: Complete i18n with all validation messages
+const I18N = {
+  en:{
+    app_title:"DV Lottery Photo Validator",
+    upload_title:"Drag & drop your photo here", upload_subtitle:"or click to browse", upload_drop:"Drop photo here",
+    validate_btn:"Validate", show_hints:"Show alignment hints",
+    manual_btn:"Adjust Lines", save_btn:"Save & Re‑check", reset_btn:"Reset",
+    overall_quality:"Overall quality", checks_title:"Validation Results",
+    no_results:"Upload and validate a photo to see results",
+    disclaimer:"⚠️ This tool provides automated estimates based on DV Lottery guidelines. Always review your final photo before submission.",
+    validating:"Validating...",
+    // overlay labels
+    line_top:"Top of Head", line_eye:"Eye Level (56–69%)", line_chin:"Chin Line",
+    // status
+    Pass:"Pass", Warning:"Warning", Fail:"Fail",
+    // ✅ Validation parameter names
+    "Photo Dimensions":"Photo Dimensions",
+    "File Size":"File Size",
+    "File Format":"File Format",
+    "Color Model":"Color Model",
+    "Brightness":"Brightness",
+    "Contrast":"Contrast",
+    "Sharpness":"Sharpness",
+    "Photo Date":"Photo Date",
+    "Compression Artifacts":"Compression Artifacts",
+    "Head Height":"Head Height",
+    "Eye Level":"Eye Level",
+    "Head Centering":"Head Centering",
+    "Background":"Background",
+    "Face Lighting":"Face Lighting",
+    "Red-Eye":"Red-Eye",
+    "Glasses/Headphones":"Glasses/Headphones",
+    "Headgear":"Headgear",
+    "Facial Expression":"Facial Expression",
+    "One Person Only":"One Person Only",
+    "Face Detection":"Face Detection",
+    "Error Level Analysis":"Error Level Analysis",
+    "Metadata Consistency":"Metadata Consistency",
+    "Noise Pattern":"Noise Pattern",
+    "Color Channels":"Color Channels"
   },
-  ru: {
-    title: 'Проверка фото для DV Лотереи',
-    uploadHint: 'Загрузите JPEG — 600×600 до 1200×1200 px, ≤ 240 КБ',
-    validate: 'Проверить',
-    uploadToBegin: 'Загрузите фото для начала',
-    analyzing: 'Анализируем…',
-    photoMeets: '✅ Фото соответствует требованиям DV',
-    minorIssues: '⚠️ Незначительные проблемы, исправьте',
-    doesNotMeet: '❌ Не соответствует требованиям',
-    current: 'Текущее:',
-    required: 'Требуется:',
-    pleaseUploadJpeg: 'Пожалуйста, загрузите JPEG изображение',
-    fileExceeds: 'Файл превышает 240КБ'
+  ru:{
+    app_title:"Проверка фото для DV Лотереи",
+    upload_title:"Перетащите фото сюда", upload_subtitle:"или нажмите для выбора", upload_drop:"Отпустите фото",
+    validate_btn:"Проверить", show_hints:"Показывать подсказки выравнивания",
+    manual_btn:"Подстроить линии", save_btn:"Сохранить и перепроверить", reset_btn:"Сбросить",
+    overall_quality:"Общая оценка", checks_title:"Результаты проверки",
+    no_results:"Загрузите и проверьте фото чтобы увидеть результаты",
+    disclaimer:"⚠️ Этот инструмент выполняет автоматическую оценку по требованиям DV Lottery. Всегда проверяйте финальное фото перед отправкой.",
+    validating:"Проверка...",
+    line_top:"Верх головы", line_eye:"Линия глаз (56–69%)", line_chin:"Линия подбородка",
+    Pass:"Соответствует", Warning:"Предупреждение", Fail:"Не соответствует",
+    // ✅ Validation parameter names (Russian)
+    "Photo Dimensions":"Размеры фото",
+    "File Size":"Размер файла",
+    "File Format":"Формат файла",
+    "Color Model":"Цветовая модель",
+    "Brightness":"Яркость",
+    "Contrast":"Контраст",
+    "Sharpness":"Резкость",
+    "Photo Date":"Дата фото",
+    "Compression Artifacts":"Артефакты сжатия",
+    "Head Height":"Высота головы",
+    "Eye Level":"Уровень глаз",
+    "Head Centering":"Центрирование головы",
+    "Background":"Фон",
+    "Face Lighting":"Освещение лица",
+    "Red-Eye":"Красные глаза",
+    "Glasses/Headphones":"Очки/Наушники",
+    "Headgear":"Головной убор",
+    "Facial Expression":"Выражение лица",
+    "One Person Only":"Только один человек",
+    "Face Detection":"Определение лица",
+    "Error Level Analysis":"Анализ уровня ошибок",
+    "Metadata Consistency":"Согласованность метаданных",
+    "Noise Pattern":"Паттерн шума",
+    "Color Channels":"Цветовые каналы"
   }
 };
 
-let currentLocale = localStorage.getItem('locale') || (navigator.language.startsWith('ru') ? 'ru' : 'en');
+let LANG = localStorage.getItem('lang') || (navigator.language.startsWith('ru') ? 'ru' : 'en');
 
-function applyLocale(l) {
-  const L = locales[l];
-  document.getElementById('title').textContent = L.title;
-  document.getElementById('uploadHint').innerHTML = `<strong>${l === 'en' ? 'Upload' : 'Загрузите'} JPEG</strong> — 600×600 ${l === 'en' ? 'to' : 'до'} 1200×1200 px, ≤ 240 ${l === 'en' ? 'KB' : 'КБ'}`;
-  document.getElementById('run').textContent = L.validate;
-  localStorage.setItem('locale', l);
+function applyI18N(){
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const key = el.getAttribute('data-i18n');
+    if (I18N[LANG][key]) el.textContent = I18N[LANG][key];
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>{
+    const key = el.getAttribute('data-i18n-title');
+    if (I18N[LANG][key]) el.title = I18N[LANG][key];
+  });
+  drawOverlay(); // refresh overlay labels
 }
 
-// Dark mode support
-function setDarkMode(on) {
-  document.documentElement.classList.toggle('dark', !!on);
-  localStorage.setItem('dark', on ? '1' : '0');
-}
+// ---------------- Dark mode ----------------
+(function(){
+  const saved = localStorage.getItem('dark');
+  if(saved!==null) document.documentElement.classList.toggle('dark', saved==='1');
+})();
 
-// Initialize dark mode
-const savedDark = localStorage.getItem('dark');
-if (savedDark === null) {
-  // Auto by system preference
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  setDarkMode(prefersDark);
-} else {
-  setDarkMode(savedDark === '1');
-}
+// ---------------- Elements ----------------
+const img = document.getElementById('photo');
+const overlay = document.getElementById('overlay');
+const ctx = overlay.getContext('2d');
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const previewWrap = document.getElementById('previewWrap');
+const controls = document.getElementById('controls');
+const rows = document.getElementById('rows');
+const scorePct = document.getElementById('scorePct');
+const meterVal = document.getElementById('meterVal');
+const showHints = document.getElementById('showHints');
+const validateBtn = document.getElementById('validateBtn');
 
-// Apply initial locale
-applyLocale(currentLocale);
-
-// Event listeners
-document.getElementById('langToggle').addEventListener('click', () => {
-  currentLocale = currentLocale === 'ru' ? 'en' : 'ru';
-  applyLocale(currentLocale);
-});
-
-document.getElementById('darkToggle').addEventListener('click', () => {
-  const isDark = document.documentElement.classList.toggle('dark');
-  localStorage.setItem('dark', isDark ? '1' : '0');
-});
-
-// Visual hints toggle
-document.getElementById('showHints').addEventListener('change', () => {
-  if (lastResult) {
-    render(lastResult);
-  }
-});
-
-// Fixed file click handler (cross-browser compatibility)
-function openFileDialog(e) {
-  if (e.type === 'keydown' && !(e.key === 'Enter' || e.key === ' ')) return;
-  fileInput.click();
-}
-
-drop.addEventListener('click', openFileDialog);
-drop.addEventListener('touchstart', openFileDialog, {passive: true});
-drop.addEventListener('keydown', openFileDialog);
-
-// Drag and drop
-['dragover', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
-  e.preventDefault();
-  if (ev === 'drop') {
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
-  }
-}));
-
-fileInput.addEventListener('change', e => {
-  if (e.target.files[0]) handleFile(e.target.files[0]);
-});
-
+let manualMode = false; 
+let dragging = null; 
 let currentFile = null;
-function handleFile(f) {
-  if (!/image\/jpeg/.test(f.type)) return alert(locales[currentLocale].pleaseUploadJpeg);
-  if (f.size > 240 * 1024) return alert(locales[currentLocale].fileExceeds);
-  currentFile = f;
-  const url = URL.createObjectURL(f);
-  img.src = url;
-  img.onload = () => {
-    img.style.display = 'block';
-    placeholder.style.display = 'none';
-    runBtn.style.display = 'inline-block';
-    syncOverlay();
-  }
-}
+let lastValidationResult = null;
 
-runBtn.addEventListener('click', async () => {
-  const fd = new FormData();
-  fd.append('file', currentFile);
-  setScore('--', locales[currentLocale].analyzing, 'warn');
-  const res = await fetch(api + '/validate', { method: 'POST', body: fd });
-  const json = await res.json();
-  render(json);
-});
+// normalized positions (default)
+const lines = { top:.18, eye:.60, chin:.86 };
 
-function setScore(num, msg, cls) {
-  const badge = document.getElementById('badge');
-  badge.className = 'status ' + (cls === 'pass' ? 'pass' : cls === 'fail' ? 'fail' : 'warn');
-  badge.textContent = cls.toUpperCase();
-  document.getElementById('num').textContent = num;
-  document.getElementById('msg').textContent = msg;
-}
+// API base URL
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:8000'
+  : '';
 
-function render(j) {
-  lastResult = j; // Store for hints toggle
-  const msg = j.status === 'pass' ? locales[currentLocale].photoMeets :
-              j.status === 'warning' ? locales[currentLocale].minorIssues :
-              locales[currentLocale].doesNotMeet;
-  setScore(j.overall_score, msg, j.status);
-  fill('tech', j.technical);
-  
-  // Separate biometric from tampering detection results
-  const bioItems = j.biometric.filter(p => !p.name.includes('Error Level') && !p.name.includes('Metadata') && !p.name.includes('Noise') && !p.name.includes('Color Channel'));
-  const tamperItems = j.biometric.filter(p => p.name.includes('Error Level') || p.name.includes('Metadata') || p.name.includes('Noise') || p.name.includes('Color Channel'));
-  
-  fill('bio', bioItems);
-  fill('tamper', tamperItems);
-  
-  // ✅ HYBRID: Extract auto-detected faceBox and normalize coordinates
-  const headHeight = bioItems.find(p => p.name === 'Head Height' && p.faceBox);
-  if (headHeight && headHeight.faceBox) {
-    const fb = headHeight.faceBox;
-    const imgHeight = img.naturalHeight || fb.image_height;
-    
-    if (imgHeight && imgHeight > 0) {
-      // Convert absolute pixels to normalized coordinates (0-1)
-      const topNorm = fb.top / imgHeight;
-      const eyeNorm = fb.eyeY / imgHeight;
-      const chinNorm = fb.bottom / imgHeight;
-      
-      // Store auto lines
-      autoLines.top = topNorm;
-      autoLines.eye = eyeNorm;
-      autoLines.chin = chinNorm;
-      
-      // Only update current lines if not in manual mode or if this is auto-detection
-      if (!manualMode || fb.method !== 'manual') {
-        lines.top = topNorm;
-        lines.eye = eyeNorm;
-        lines.chin = chinNorm;
-      }
-      
-      // Show manual adjustment button
-      document.getElementById('toggleManual').style.display = 'inline-block';
-    }
-  }
-  
-  drawOverlay(j);
-}
-
-function pill(s) {
-  return '<span class="status ' + (s === 'pass' ? 'pass' : s === 'warning' ? 'warn' : 'fail') + '">' + s.toUpperCase() + '</span>';
-}
-
-function fill(id, items) {
-  const el = document.getElementById(id);
-  el.innerHTML = items.map(p => `
-    <div class="param ${p.status}">
-      <div class="row"><b>${p.name}</b>${pill(p.status)}</div>
-      <div style="color:var(--text-secondary);margin-top:4px">
-        ${p.value ? '<b>' + locales[currentLocale].current + '</b> ' + p.value + ' ' : ''}
-        ${p.expected ? '<b>' + locales[currentLocale].required + '</b> ' + p.expected : ''}
-      </div>
-      ${p.recommendation ? `<p class='rec'>${p.recommendation}</p>` : ''}
-      ${p.how_to_fix ? `<p class='fix'><b>What to do:</b> ${p.how_to_fix}</p>` : ''}
-    </div>
-  `).join('');
-}
-
-let lastResult = null;
-
-// ✅ FIX: Sync overlay canvas to displayed image (pixel-perfect, HiDPI-safe)
-function syncOverlay() {
-  const ctx = overlay.getContext('2d');
+function syncOverlay(){
   const rect = img.getBoundingClientRect();
-  
-  // Match CSS size and position
-  overlay.style.left = img.offsetLeft + 'px';
-  overlay.style.top = img.offsetTop + 'px';
+  overlay.width = rect.width * (window.devicePixelRatio||1);
+  overlay.height= rect.height* (window.devicePixelRatio||1);
   overlay.style.width = rect.width + 'px';
-  overlay.style.height = rect.height + 'px';
-  
-  // Match backing store (HiDPI safe)
-  const dpr = window.devicePixelRatio || 1;
-  overlay.width = Math.max(1, Math.floor(rect.width * dpr));
-  overlay.height = Math.max(1, Math.floor(rect.height * dpr));
-  
-  // Scale context for CSS pixels
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  
-  // Redraw after resizing
-  if (lastResult) {
-    drawOverlay(lastResult);
-  }
+  overlay.style.height= rect.height+ 'px';
+  overlay.style.left = '0';
+  overlay.style.top = '0';
+  ctx.setTransform((window.devicePixelRatio||1),0,0,(window.devicePixelRatio||1),0,0);
+  drawOverlay();
 }
 
-// Sync on window resize
 window.addEventListener('resize', syncOverlay);
 
-function drawOverlay(j){
-  const show = document.getElementById('showHints').checked;
-  const ctx = overlay.getContext('2d');
-  
-  // Get CSS dimensions for drawing
-  const w = overlay.clientWidth;
-  const h = overlay.clientHeight;
-  
-  ctx.clearRect(0, 0, overlay.width, overlay.height);
-  
-  if (!show) {
-    return;
+// ✅ FIX 1: Adaptive contrast calculation for overlay lines
+function contrastColorAtY(yCss){
+  const y = Math.max(0, Math.min(overlay.height-1, yCss*(window.devicePixelRatio||1)));
+  try{
+    // Sample multiple points horizontally for better accuracy
+    const samples = 5;
+    let totalLum = 0;
+    for(let i = 0; i < samples; i++){
+      const x = (overlay.width / samples) * i * (window.devicePixelRatio||1);
+      const px = ctx.getImageData(x, y, 1, 1).data;
+      totalLum += 0.299*px[0] + 0.587*px[1] + 0.114*px[2];
+    }
+    const avgLum = totalLum / samples;
+    // Use higher contrast threshold for better visibility
+    return avgLum > 140 ? '#000000' : '#ffffff';
+  }catch(e){ 
+    return '#ffffff'; 
   }
+}
+
+function drawOverlay(){
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  if(!showHints.checked || !img.naturalHeight) return;
   
-  // ✅ HYBRID: Draw lines using normalized coordinates in CSS pixels
-  const guides = [
-    { key: 'top', y: lines.top, label: 'Top of Head', color: '#22c55e', dash: [5, 5] },
-    { key: 'eye', y: lines.eye, label: 'Eye Level (56-69%)', color: '#3b82f6', dash: [3, 3] },
-    { key: 'chin', y: lines.chin, label: 'Chin Line', color: '#ef4444', dash: [5, 5] }
+  const h = overlay.clientHeight, w = overlay.clientWidth;
+  const guideData = [
+    {k:'top',  label:I18N[LANG].line_top},
+    {k:'eye',  label:I18N[LANG].line_eye},
+    {k:'chin', label:I18N[LANG].line_chin}
   ];
   
-  guides.forEach(g => {
-    if (lines[g.key] == null) return;  // Skip if missing
+  guideData.forEach(g=>{
+    const y = Math.max(0, Math.min(h, lines[g.k]*h));
+    const col = contrastColorAtY(y);
     
-    const y = g.y * h;  // Convert normalized to CSS pixels
+    // ✅ High-contrast line with shadow for maximum visibility
+    ctx.strokeStyle = col; 
+    ctx.lineWidth = 3;  // Thicker for better visibility
+    ctx.setLineDash([8, 4]);  // More prominent dashes
     
-    // ✅ Draw with white outline for visibility on ANY background (hair, skin, etc.)
-    // White outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = (manualMode ? 3 : 2) + 2;
-    ctx.setLineDash(g.dash);
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
+    // Shadow for depth (opposite color)
+    ctx.shadowColor = col === '#000000' ? '#ffffff' : '#000000';
+    ctx.shadowBlur = 2;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    
+    ctx.beginPath(); 
+    ctx.moveTo(0,y); 
+    ctx.lineTo(w,y); 
     ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
     
-    // Colored line on top
-    ctx.strokeStyle = g.color;
-    ctx.lineWidth = manualMode ? 3 : 2;
-    ctx.setLineDash(g.dash);
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
-    ctx.stroke();
-    
-    // Draw center dot with white outline
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(w / 2, y, (manualMode ? 6 : 4) + 2, 0, 2 * Math.PI);
-    ctx.fill();
-    
-    ctx.fillStyle = g.color;
-    ctx.beginPath();
-    ctx.arc(w / 2, y, manualMode ? 6 : 4, 0, 2 * Math.PI);
-    ctx.fill();
-    
-    // Draw label with white shadow for contrast
-    const labelY = Math.max(2, y - 18);
-    ctx.font = 'bold 12px system-ui, sans-serif';
+    // ✅ Label with high-contrast background
+    ctx.font = 'bold 13px system-ui, sans-serif';
     const metrics = ctx.measureText(g.label);
+    const pad = 8;
+    const labelY = Math.max(18, Math.min(h - 8, y - 10));
     
-    // White shadow/outline
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(7, labelY - 1, metrics.width + 10, 16);
+    // Strong background with border for maximum contrast
+    const bgColor = col === '#000000' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(0, 0, 0, 0.95)';
+    const textColor = col === '#000000' ? '#000000' : '#ffffff';
+    const borderColor = col === '#000000' ? '#000000' : '#ffffff';
     
-    // Colored background
-    ctx.fillStyle = g.color;
-    ctx.fillRect(8, labelY, metrics.width + 8, 14);
+    // Background rectangle
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(10, labelY - 15, metrics.width + pad*2, 22);
     
-    // White text
-    ctx.fillStyle = '#fff';
-    ctx.fillText(g.label, 12, Math.max(12, y - 6));
+    // Border for definition
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(10, labelY - 15, metrics.width + pad*2, 22);
     
-    // Draw drag handle in manual mode with white outline
-    if (manualMode) {
-      // White outline
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(w - 36, y - 3, 27, 8);
-      
-      // Colored handle
-      ctx.fillStyle = g.color;
-      ctx.fillRect(w - 35, y - 2, 25, 4);
-    }
+    // Text
+    ctx.fillStyle = textColor;
+    ctx.fillText(g.label, 10 + pad, labelY);
   });
-  
-  // Center guidelines
-  ctx.setLineDash([2, 2]); 
-  ctx.strokeStyle = 'rgba(156, 163, 175, .5)';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); 
-  ctx.moveTo(w / 2, 0); 
-  ctx.lineTo(w / 2, h); 
-  ctx.stroke();
-  ctx.beginPath(); 
-  ctx.moveTo(0, h / 2); 
-  ctx.lineTo(w, h / 2); 
-  ctx.stroke();
 }
 
-// ✅ HYBRID MODE: Manual line adjustment with unified pointer events
-function nearestLine(yNorm) {
-  const keys = ['top', 'eye', 'chin'];
-  return keys.reduce((a, b) => 
-    Math.abs(lines[a] - yNorm) < Math.abs(lines[b] - yNorm) ? a : b
-  );
+// Pointer drag for manual lines
+function normYFromEvent(e){ 
+  const r = overlay.getBoundingClientRect(); 
+  return Math.max(0, Math.min(1, (e.clientY - r.top)/r.height)); 
 }
 
-function getNormY(e) {
-  const rect = overlay.getBoundingClientRect();
-  return Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+function nearestKey(y){ 
+  return ['top','eye','chin'].reduce((a,b)=> Math.abs(lines[a]-y) < Math.abs(lines[b]-y) ? a : b); 
 }
 
-overlay.addEventListener('pointerdown', e => {
-  if (!manualMode) return;
-  e.preventDefault();
-  overlay.setPointerCapture(e.pointerId);
-  
-  const yNorm = getNormY(e);
-  const key = nearestLine(yNorm);
-  
-  if (Math.abs(lines[key] - yNorm) < 0.05) {
-    dragging.key = key;
-    overlay.style.cursor = 'ns-resize';
-  }
+overlay.addEventListener('pointerdown', e=>{ 
+  if(!manualMode) return; 
+  e.preventDefault(); 
+  overlay.setPointerCapture(e.pointerId); 
+  const y=normYFromEvent(e); 
+  const k=nearestKey(y); 
+  if(Math.abs(lines[k]-y)<0.06) dragging=k; 
 });
 
-overlay.addEventListener('pointermove', e => {
-  if (!manualMode) {
-    overlay.style.cursor = 'crosshair';
+overlay.addEventListener('pointermove', e=>{ 
+  if(!manualMode||!dragging) return; 
+  e.preventDefault(); 
+  lines[dragging]=normYFromEvent(e); 
+  drawOverlay(); 
+});
+
+overlay.addEventListener('pointerup', e=>{ 
+  if(!manualMode) return; 
+  overlay.releasePointerCapture(e.pointerId); 
+  dragging=null; 
+});
+
+// Score meter update
+function updateScoreMeter(pct){
+  const clamped = Math.max(0, Math.min(100, pct||0));
+  scorePct.textContent = clamped.toFixed(0) + '%';
+  meterVal.setAttribute('stroke-dasharray', '100 100');
+  meterVal.setAttribute('stroke-dashoffset', (100 - clamped).toString());
+  meterVal.style.stroke = clamped>=80? 'var(--pass)' : (clamped>=60? 'var(--warn)' : 'var(--fail)');
+}
+
+// Compact row renderer
+function rowIcon(status){ 
+  return status==='pass'?'✅':(status==='warning'?'⚠️':'❌'); 
+}
+
+// ✅ FIX 2: Fully localized row rendering
+function renderRows(items){
+  if(!items || items.length === 0){
+    rows.innerHTML = '<div style="text-align:center;color:var(--sub);padding:20px" data-i18n="no_results">Upload and validate a photo to see results</div>';
+    applyI18N();
     return;
   }
   
-  if (dragging.key) {
-    e.preventDefault();
-    lines[dragging.key] = getNormY(e);
-    drawOverlay(lastResult);
-  } else {
-    // Show cursor hint when near a line
-    const yNorm = getNormY(e);
-    const key = nearestLine(yNorm);
-    overlay.style.cursor = Math.abs(lines[key] - yNorm) < 0.05 ? 'ns-resize' : 'crosshair';
-  }
-});
+  rows.innerHTML = items.map(p=>{
+    const cls = p.status==='pass'?'pass':(p.status==='warning'?'warn':'fail');
+    
+    // ✅ Translate parameter name
+    const label = I18N[LANG][p.name] || p.name;
+    
+    const cur = p.value ?? '—';
+    const exp = p.expected ?? '—';
+    
+    // ✅ Keep recommendation and how_to_fix in original language from backend
+    // These are already context-specific and don't need translation keys
+    const rec = p.recommendation ? `<div class="rec">${p.recommendation}</div>`:'';
+    const fix = p.how_to_fix ? `<div class="fix">💡 ${p.how_to_fix}</div>`:'';
+    
+    return `
+      <div class="row ${cls}" onclick="this.classList.toggle('open')">
+        <div class="summary">
+          <span class="status">${rowIcon(p.status)}</span>
+          <span class="label">${label}</span>
+          <span class="value">${cur}</span>
+          <span class="expected">${exp}</span>
+        </div>
+        ${rec || fix ? `<div class="details">${rec}${fix}</div>` : ''}
+      </div>`;
+  }).join('');
+}
 
-overlay.addEventListener('pointerup', e => {
-  if (!manualMode) return;
-  overlay.releasePointerCapture(e.pointerId);
-  dragging.key = null;
-  overlay.style.cursor = 'crosshair';
-});
-
-overlay.addEventListener('pointercancel', e => {
-  dragging.key = null;
-  overlay.style.cursor = 'crosshair';
-});
-
-// Button handlers
-document.getElementById('toggleManual').onclick = () => {
-  manualMode = !manualMode;
-  const btn = document.getElementById('toggleManual');
-  const saveBtn = document.getElementById('saveManual');
-  const resetBtn = document.getElementById('resetManual');
-  
-  if (manualMode) {
-    btn.textContent = '✓ Manual Mode';
-    btn.style.background = '#3b82f6';
-    saveBtn.style.display = 'inline-block';
-    resetBtn.style.display = 'inline-block';
-    overlay.style.cursor = 'default';
-  } else {
-    btn.textContent = '✏️ Adjust Lines';
-    btn.style.background = '';
-    saveBtn.style.display = 'none';
-    resetBtn.style.display = 'none';
-    overlay.style.cursor = 'default';
-  }
-  
-  drawOverlay(lastResult);
-};
-
-document.getElementById('resetManual').onclick = () => {
-  // Reset to auto-detected lines
-  lines.top = autoLines.top;
-  lines.eye = autoLines.eye;
-  lines.chin = autoLines.chin;
-  drawOverlay(lastResult);
-};
-
-document.getElementById('saveManual').onclick = async () => {
-  if (!currentFile) return;
-  
-  // Send manual overrides to backend
+// Validate with backend API
+async function runValidate(file, overrides){
   const fd = new FormData();
-  fd.append('file', currentFile);
-  fd.append('overrides', JSON.stringify({
-    top: lines.top,
-    eye: lines.eye,
-    chin: lines.chin
-  }));
+  fd.append('file', file);
+  if(overrides) fd.append('overrides', JSON.stringify(overrides));
   
-  setScore('--', locales[currentLocale].analyzing, 'warn');
-  const res = await fetch(api + '/validate', { method: 'POST', body: fd });
-  const json = await res.json();
-  render(json);
-};
+  const res = await fetch(`${API_BASE}/validate`, {method:'POST', body:fd});
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+// File upload handlers
+function handleFile(file){
+  if(!file || !file.type.startsWith('image/')) return;
+  
+  currentFile = file;
+  const url = URL.createObjectURL(file);
+  
+  img.src = url;
+  img.onload = ()=>{
+    dropZone.style.display = 'none';
+    previewWrap.style.display = 'flex';
+    controls.style.display = 'flex';
+    validateBtn.disabled = false;
+    syncOverlay();
+    URL.revokeObjectURL(url);
+  };
+  
+  dropZone.classList.add('has-file');
+}
+
+fileInput.addEventListener('change', ev=>{
+  const f = ev.target.files?.[0];
+  if(f) handleFile(f);
+});
+
+dropZone.addEventListener('click', ()=> fileInput.click());
+
+// Drag & drop
+dropZone.addEventListener('dragover', e=>{
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', ()=>{
+  dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', e=>{
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer?.files?.[0];
+  if(file) handleFile(file);
+});
+
+// Validate button
+validateBtn.addEventListener('click', async()=>{
+  if(!currentFile) return;
+  
+  const originalText = validateBtn.textContent;
+  validateBtn.disabled = true;
+  validateBtn.innerHTML = `<span class="spinner"></span> ${I18N[LANG].validating}`;
+  
+  try {
+    const overrides = manualMode ? {top:lines.top, eye:lines.eye, chin:lines.chin} : undefined;
+    const j = await runValidate(currentFile, overrides);
+    lastValidationResult = j;
+    
+    // Update lines from faceBox if provided
+    const hh = (j.biometric||[]).find(p=>p.name==='Head Height' && p.faceBox);
+    if(hh && hh.faceBox && img.naturalHeight){
+      lines.top = hh.faceBox.top / img.naturalHeight;
+      lines.eye = hh.faceBox.eyeY / img.naturalHeight;
+      lines.chin = hh.faceBox.bottom / img.naturalHeight;
+    }
+    
+    updateScoreMeter(j.overall_score);
+    const items = [...(j.technical||[]), ...(j.biometric||[])];
+    renderRows(items);
+    drawOverlay();
+    
+  } catch(err) {
+    alert(`Validation error: ${err.message}`);
+  } finally {
+    validateBtn.disabled = false;
+    validateBtn.textContent = originalText;
+  }
+});
+
+// Manual mode controls
+document.getElementById('manualBtn').addEventListener('click',()=>{ 
+  manualMode = !manualMode;
+  document.getElementById('saveManualBtn').style.display = manualMode?'inline-block':'none';
+  document.getElementById('resetManualBtn').style.display = manualMode?'inline-block':'none';
+  overlay.style.cursor = manualMode ? 'ns-resize' : 'default';
+});
+
+document.getElementById('saveManualBtn').addEventListener('click',()=>{
+  manualMode = false;
+  document.getElementById('saveManualBtn').style.display = 'none';
+  document.getElementById('resetManualBtn').style.display = 'none';
+  overlay.style.cursor = 'default';
+  validateBtn.click(); // Re-validate with manual overrides
+});
+
+document.getElementById('resetManualBtn').addEventListener('click',()=>{
+  // Reset to last auto-detected values
+  if(lastValidationResult){
+    const hh = (lastValidationResult.biometric||[]).find(p=>p.name==='Head Height' && p.faceBox);
+    if(hh && hh.faceBox && img.naturalHeight){
+      lines.top = hh.faceBox.top / img.naturalHeight;
+      lines.eye = hh.faceBox.eyeY / img.naturalHeight;
+      lines.chin = hh.faceBox.bottom / img.naturalHeight;
+      drawOverlay();
+    }
+  }
+});
+
+// Show hints toggle
+showHints.addEventListener('change', drawOverlay);
+
+// Language toggle
+document.getElementById('langToggle').addEventListener('click',()=>{ 
+  LANG = LANG==='en'?'ru':'en'; 
+  localStorage.setItem('lang', LANG); 
+  applyI18N(); 
+});
+
+// Dark mode toggle
+document.getElementById('darkToggle').addEventListener('click',()=>{ 
+  const on = !document.documentElement.classList.contains('dark'); 
+  document.documentElement.classList.toggle('dark', on); 
+  localStorage.setItem('dark', on?'1':'0'); 
+  drawOverlay(); 
+});
+
+// Initial
+applyI18N();
 </script>
 </body>
 </html>
-
