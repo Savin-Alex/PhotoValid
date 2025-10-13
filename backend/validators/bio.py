@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Optional
 import numpy as np
 import cv2
 from .utils import json_param
@@ -7,394 +7,260 @@ from .utils import json_param
 try:
     import mediapipe as mp
     MP_FACE_MESH = mp.solutions.face_mesh
+    MP_FACE_DETECTION = mp.solutions.face_detection
     MP_AVAILABLE = True
 except Exception:
     MP_FACE_MESH = None
+    MP_FACE_DETECTION = None
     MP_AVAILABLE = False
 
 
 class BioValidator:
     """
     Biometric validator for DV Lottery photo requirements.
-    Uses modern MediaPipe FaceLandmarker API for accurate facial landmark detection.
+    Uses MediaPipe Face Detection + Face Mesh for accurate measurements.
+    Always returns faceBox for overlay visualization.
     """
-    
-    # MediaPipe FaceLandmarker 478-point model indices
-    # https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
-    LANDMARKS = {
-        # Head boundary points
-        'forehead_center': 10,       # Top center of forehead
-        'chin_bottom': 152,           # Bottom tip of chin
-        
-        # Eye landmarks (for precise eye line)
-        'left_eye_center': 468,       # Left iris center (requires refine_landmarks)
-        'right_eye_center': 473,      # Right iris center
-        'left_eye_top': 159,          # Left eye top lid
-        'right_eye_top': 386,         # Right eye top lid
-        'left_eye_outer': 33,         # Left eye outer corner
-        'left_eye_inner': 133,        # Left eye inner corner
-        'right_eye_outer': 362,       # Right eye outer corner
-        'right_eye_inner': 263,       # Right eye inner corner
-        
-        # Face contour (for horizontal bounds)
-        'face_left': 234,             # Left face contour
-        'face_right': 454,            # Right face contour
-    }
     
     def __init__(self, bgr: np.ndarray):
         self.arr = bgr
         self.h, self.w = bgr.shape[:2]
-        self.landmarks = None
-        self.detection_box = None
-        
-    def _clamp_box(self, x: int, y: int, w: int, h: int) -> Tuple[int, int, int, int]:
-        """Clamp all coordinates to stay within image bounds."""
-        x = max(0, min(int(x), self.w - 1))
-        y = max(0, min(int(y), self.h - 1))
-        w = max(1, min(int(w), self.w - x))
-        h = max(1, min(int(h), self.h - y))
-        return x, y, w, h
     
-    def _clamp_point(self, x: float, y: float) -> Tuple[int, int]:
-        """Clamp a single point to image bounds."""
-        x = max(0, min(int(x), self.w - 1))
-        y = max(0, min(int(y), self.h - 1))
-        return x, y
-    
-    def detect_face_landmarks(self) -> Tuple[List[Dict[str, Any]], bool]:
-        """
-        Detect face landmarks using MediaPipe Face Mesh.
-        Returns (result_messages, success).
-        """
-        results = []
+    def detect_face_box(self):
+        """Return bounding box [xmin, ymin, width, height] or None."""
+        if not MP_AVAILABLE or MP_FACE_DETECTION is None:
+            return None
         
+        with MP_FACE_DETECTION.FaceDetection(
+            model_selection=0,  # Short range for portraits
+            min_detection_confidence=0.5
+        ) as fd:
+            rgb = cv2.cvtColor(self.arr, cv2.COLOR_BGR2RGB)
+            res = fd.process(rgb)
+            
+            if not res.detections:
+                return None
+            
+            bb = res.detections[0].location_data.relative_bounding_box
+            
+            # Convert to absolute pixels
+            xmin = int(bb.xmin * self.w)
+            ymin = int(bb.ymin * self.h)
+            w = int(bb.width * self.w)
+            h = int(bb.height * self.h)
+            
+            # Clamp to image bounds
+            xmin = max(0, xmin)
+            ymin = max(0, ymin)
+            if xmin + w > self.w:
+                w = self.w - xmin
+            if ymin + h > self.h:
+                h = self.h - ymin
+            
+            return (xmin, ymin, w, h)
+    
+    def detect_landmarks(self):
+        """Return face mesh landmarks or None."""
         if not MP_AVAILABLE or MP_FACE_MESH is None:
-            results.append(json_param(
-                'Face Detection',
-                'Error',
-                'One face detected',
-                False,
-                rec='MediaPipe not available.',
-                fix='Install MediaPipe: pip install mediapipe'
-            ))
-            return results, False
+            return None
         
-        try:
-            # Use Face Mesh with refine_landmarks for iris detection
-            with MP_FACE_MESH.FaceMesh(
-                static_image_mode=True,
-                max_num_faces=2,  # Detect up to 2 to verify only one present
-                refine_landmarks=True,  # Enable iris landmarks (468-477)
-                min_detection_confidence=0.6,
-                min_tracking_confidence=0.6
-            ) as face_mesh:
-                # ✅ FIX 1: Use exact input size - convert BGR to RGB
-                # MediaPipe works with RGB and preserves dimensions when passed as array
-                rgb = cv2.cvtColor(self.arr, cv2.COLOR_BGR2RGB)
-                
-                # Detect landmarks - MediaPipe will use exact image dimensions
-                detection_result = face_mesh.process(rgb)
-                
-                if not detection_result.multi_face_landmarks:
-                    results.append(json_param(
-                        'Face Detection',
-                        'No face found',
-                        'One face detected',
-                        False,
-                        rec='No face detected in the image.',
-                        fix='Take a clear frontal photo with your face visible and centered.'
-                    ))
-                    return results, False
-                
-                if len(detection_result.multi_face_landmarks) > 1:
-                    results.append(json_param(
-                        'One Person Only',
-                        f'{len(detection_result.multi_face_landmarks)} faces',
-                        'Exactly one face',
-                        False,
-                        rec='Multiple faces detected.',
-                        fix='Ensure only you are in the photo. Remove other people or reflections.'
-                    ))
-                    return results, False
-                
-                # Store landmarks (normalized coordinates 0-1)
-                self.landmarks = detection_result.multi_face_landmarks[0].landmark
-                
-                results.append(json_param(
-                    'One Person Only',
-                    '1 face',
-                    'Exactly one face',
-                    True
-                ))
-                
-                return results, True
-                
-        except Exception as e:
-            results.append(json_param(
-                'Face Detection',
-                f'Error: {str(e)}',
-                'One face detected',
-                False,
-                rec='Face detection failed.',
-                fix='Ensure photo is a valid image file with good lighting.'
-            ))
-            return results, False
+        with MP_FACE_MESH.FaceMesh(
+            static_image_mode=True,
+            max_num_faces=1,
+            refine_landmarks=True,  # Enable iris detection
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        ) as fm:
+            rgb = cv2.cvtColor(self.arr, cv2.COLOR_BGR2RGB)
+            res = fm.process(rgb)
+            
+            if not res.multi_face_landmarks:
+                return None
+            
+            return res.multi_face_landmarks[0]
     
-    def _get_landmark_coords(self, index: int) -> Tuple[float, float]:
+    def _find_true_head_top(self, gray: np.ndarray, forehead_x: int, forehead_y: int) -> int:
         """
-        Get pixel coordinates for a landmark index.
-        ✅ FIX 4: Normalize using actual image dimensions (not aspect-compensated).
+        ✅ CONTRAST-BASED: Find actual top of head by scanning upward to image top.
+        Detects where dark hair/skin meets bright background.
+        
+        Args:
+            gray: Grayscale image
+            forehead_x, forehead_y: Starting point (forehead landmark)
+        
+        Returns:
+            Y coordinate of true head top (where head meets background)
         """
-        if not self.landmarks or index >= len(self.landmarks):
-            return None, None
-        lm = self.landmarks[index]
-        # Direct scaling - MediaPipe normalizes to [0,1] based on input dimensions
-        x = lm.x * self.w
-        y = lm.y * self.h
-        return x, y
+        # ✅ Scan ALL the way to top of image (not just 150px)
+        # Extract narrow vertical stripe from top of image to forehead
+        x1 = max(0, forehead_x - 3)
+        x2 = min(gray.shape[1] - 1, forehead_x + 3)
+        y1 = 0  # Start from top of image
+        
+        column = gray[y1:forehead_y, x1:x2]
+        
+        if column.size == 0:
+            return forehead_y
+        
+        # Calculate brightness profile (average across the narrow stripe)
+        profile = np.mean(column, axis=1)
+        
+        # Find gradient (brightness changes)
+        grad = np.abs(np.diff(profile))
+        
+        # Find strong edges (threshold tuned for hair-to-background transition)
+        # Typical transition: dark hair (50-100) → white wall (230-255) = gradient ~100+
+        # Lower threshold to 12 to catch subtle transitions too
+        edges = np.where(grad > 12)[0]
+        
+        if len(edges) > 0:
+            # Take the topmost strong edge (first one scanning from top)
+            boundary_idx = edges[0]
+            boundary_y = y1 + boundary_idx
+            return int(max(0, boundary_y))
+        
+        # No clear edge found - fallback (no margin, just forehead)
+        # This happens with bright hair on white background
+        return forehead_y
     
-    def _calculate_eye_line(self) -> Optional[float]:
+    def calculate(self, manual_overrides: Optional[Dict[str, float]] = None):
         """
-        Calculate precise eye line Y coordinate using iris centers.
-        Returns Y pixel coordinate of eye line from top of image.
+        Calculate head measurements.
+        Returns dict with faceBox, head_ratio, eye_level.
+        Supports manual overrides (normalized Y coordinates 0-1).
         """
-        # Try iris centers first (most accurate with refine_landmarks)
-        left_iris_x, left_iris_y = self._get_landmark_coords(self.LANDMARKS['left_eye_center'])
-        right_iris_x, right_iris_y = self._get_landmark_coords(self.LANDMARKS['right_eye_center'])
+        # ✅ HYBRID: If manual overrides provided, use them
+        if manual_overrides:
+            top_y = float(manual_overrides.get('top', 0.18)) * self.h
+            eye_y = float(manual_overrides.get('eye', 0.60)) * self.h
+            chin_y = float(manual_overrides.get('chin', 0.86)) * self.h
+            
+            # Clamp
+            top_y = max(0, min(self.h - 1, top_y))
+            eye_y = max(0, min(self.h - 1, eye_y))
+            chin_y = max(0, min(self.h - 1, chin_y))
+            
+            head_ratio = (chin_y - top_y) / self.h * 100.0
+            eye_level = (self.h - eye_y) / self.h * 100.0
+            
+            faceBox = {
+                "top": int(top_y),
+                "bottom": int(chin_y),
+                "eyeY": int(eye_y),
+                "left": 0,
+                "right": self.w,
+                "centerX": self.w / 2,
+                "image_height": self.h,
+                "image_width": self.w,
+                "method": "manual"
+            }
+            
+            return {
+                "faceBox": faceBox,
+                "head_ratio": head_ratio,
+                "eye_level": eye_level,
+                "center_offset": 0.0
+            }
         
-        if left_iris_y is not None and right_iris_y is not None:
-            eye_y = (left_iris_y + right_iris_y) / 2
-            return eye_y
+        # Auto detection
+        face = self.detect_face_box()
+        lms = self.detect_landmarks()
         
-        # Fallback: use eye corners
-        left_outer_x, left_outer_y = self._get_landmark_coords(self.LANDMARKS['left_eye_outer'])
-        left_inner_x, left_inner_y = self._get_landmark_coords(self.LANDMARKS['left_eye_inner'])
-        right_outer_x, right_outer_y = self._get_landmark_coords(self.LANDMARKS['right_eye_outer'])
-        right_inner_x, right_inner_y = self._get_landmark_coords(self.LANDMARKS['right_eye_inner'])
+        # If no face at all, return fallback values
+        if face is None:
+            fallback_box = {
+                "top": int(0.20 * self.h),
+                "bottom": int(0.86 * self.h),
+                "eyeY": int(0.60 * self.h),
+                "left": 0,
+                "right": self.w,
+                "centerX": self.w / 2,
+                "image_height": self.h,
+                "image_width": self.w,
+                "method": "fallback"
+            }
+            return {
+                "faceBox": fallback_box,
+                "head_ratio": None,
+                "eye_level": None,
+                "center_offset": None
+            }
         
-        if all(y is not None for y in [left_outer_y, left_inner_y, right_outer_y, right_inner_y]):
-            left_eye_y = (left_outer_y + left_inner_y) / 2
-            right_eye_y = (right_outer_y + right_inner_y) / 2
-            eye_y = (left_eye_y + right_eye_y) / 2
-            return eye_y
+        xmin, ymin, fw, fh = face
         
-        return None
-    
-    def _estimate_head_top(self, forehead_y: float, chin_y: float, eye_y: float, mesh_top_y: float) -> float:
-        """
-        ✅ IMPROVED: Top of head (including hair) estimation.
-        
-        Uses multiple methods to find actual top of head:
-        - Mesh top (highest visible point in landmarks)
-        - Forehead + generous hair margin (15-20%)
-        - Anthropometric ratio from eyes
-        
-        Returns the highest estimate (smallest Y = top of actual head).
-        """
-        forehead_to_chin = chin_y - forehead_y
-        
-        # Method A: Use mesh top (actual highest point detected) with small safety margin
-        head_top_mesh = mesh_top_y - (0.03 * forehead_to_chin)
-        
-        # Method B: Forehead with generous 15% margin for hair
-        head_top_forehead = forehead_y - (0.15 * forehead_to_chin)
-        
-        # Method C: Anthropometric from eyes (if available)
-        if eye_y is not None and eye_y > 0:
-            eye_to_chin = chin_y - eye_y
-            head_top_eye = eye_y - (0.95 * eye_to_chin)
+        # If landmarks exist, compute precise lines
+        if lms is not None:
+            lmpts = [(lm.x * self.w, lm.y * self.h) for lm in lms.landmark]
+            
+            # Key landmarks
+            chin_x, chin_y = lmpts[152]  # Chin
+            fore_x, fore_y = lmpts[10]   # Forehead center
+            
+            # Eye Y via average of outer corners
+            ex1, ey1 = lmpts[33]   # Right eye outer
+            ex2, ey2 = lmpts[263]  # Left eye outer
+            eye_y = (ey1 + ey2) / 2.0
+            
+            # ✅ CONTRAST-BASED: Find true top of head using edge detection
+            # Scans from image top to forehead, finds exact hair/background boundary
+            gray = cv2.cvtColor(self.arr, cv2.COLOR_BGR2GRAY)
+            detected_top = self._find_true_head_top(gray, int(fore_x), int(fore_y))
+            
+            # Use detected top if it's reasonable, otherwise fall back to margin
+            face_h = chin_y - fore_y
+            conservative_top = fore_y - (0.25 * face_h)  # Fallback
+            
+            # Sanity check: detected top should be above forehead and not too far up
+            if detected_top < fore_y and (fore_y - detected_top) < (0.4 * face_h):
+                top_y = detected_top
+            else:
+                # Fallback to adaptive margin
+                top_y = conservative_top
+            
+            # Safety: clamp to image
+            top_y = max(0, top_y)
+            
+            center_x = (ex1 + ex2) / 2.0
         else:
-            head_top_eye = head_top_forehead
+            # Fallback: use bounding box proportions
+            top_y = ymin
+            chin_y = ymin + fh
+            eye_y = ymin + 0.5 * fh
+            center_x = xmin + fw / 2.0
         
-        # Take minimum (highest position = smallest Y) for true top of head
-        head_top = min(head_top_mesh, head_top_forehead, head_top_eye)
+        # Compute normalized ratios
+        head_ratio = (chin_y - top_y) / self.h * 100.0
+        eye_level = (self.h - eye_y) / self.h * 100.0
         
-        # Ensure it's within image bounds
-        return max(0, head_top)
-    
-    def _calculate_head_bounds(self) -> Dict[str, float]:
-        """
-        ✅ FIX 2 & 3: Calculate precise head boundaries with proper margins.
-        Returns dict with top, bottom, left, right in pixel coordinates.
-        """
-        if not self.landmarks:
-            return None
+        # Centering offset
+        center_offset = abs(center_x - self.w / 2.0) / self.w * 100.0
         
-        # ✅ Get key landmark positions using proper width/height scaling
-        chin_x, chin_y = self._get_landmark_coords(self.LANDMARKS['chin_bottom'])
-        forehead_x, forehead_y = self._get_landmark_coords(self.LANDMARKS['forehead_center'])
-        
-        if chin_y is None or forehead_y is None:
-            return None
-        
-        # Find topmost point in mesh (for reference only)
-        all_y = [lm.y * self.h for lm in self.landmarks]
-        mesh_top_y = min(all_y)
-        
-        # Get eye position
-        eye_y = self._calculate_eye_line()
-        
-        # ✅ FIX 3: Estimate head top with improved margins
-        head_top = self._estimate_head_top(forehead_y, chin_y, eye_y, mesh_top_y)
-        head_bottom = chin_y
-        
-        # Get horizontal bounds (leftmost and rightmost face points)
-        all_x = [lm.x * self.w for lm in self.landmarks]
-        face_left = min(all_x)
-        face_right = max(all_x)
-        
-        # Add 5% horizontal margin for ears/hair
-        face_width = face_right - face_left
-        head_left = face_left - (0.05 * face_width)
-        head_right = face_right + (0.05 * face_width)
-        
-        # Clamp to image bounds
-        x, y, w, h = self._clamp_box(
-            int(head_left),
-            int(head_top),
-            int(head_right - head_left),
-            int(head_bottom - head_top)
-        )
-        
-        return {
-            'top': y,
-            'bottom': y + h,
-            'left': x,
-            'right': x + w,
-            'chin_y': int(chin_y),
-            'forehead_y': int(forehead_y)
-        }
-    
-    def calculate_head_metrics(self) -> List[Dict[str, Any]]:
-        """Calculate head height, eye level, and centering metrics."""
-        items = []
-        
-        if not self.landmarks:
-            return items
-        
-        # Get head bounds
-        bounds = self._calculate_head_bounds()
-        if not bounds:
-            items.append(json_param(
-                'Head Metrics',
-                'Error',
-                'Valid measurements',
-                False,
-                rec='Could not calculate head boundaries.',
-                fix='Ensure your face is clearly visible and well-lit.'
-            ))
-            return items
-        
-        head_top = bounds['top']
-        head_bottom = bounds['bottom']
-        head_left = bounds['left']
-        head_right = bounds['right']
-        
-        # Get eye position
-        eye_y = self._calculate_eye_line()
-        if eye_y is None:
-            # Fallback estimate
-            eye_y = head_top + (head_bottom - head_top) * 0.35
-        
-        # Sanity check: eye position should be reasonable
-        eye_pct_raw = (self.h - eye_y) / self.h * 100
-        if eye_pct_raw < 30 or eye_pct_raw > 80:
-            # Improbable - use safer estimate
-            eye_y = head_top + (head_bottom - head_top) * 0.35
-        
-        eye_pct = (self.h - eye_y) / self.h * 100
-        
-        # Calculate head height percentage (DV spec: from top to chin)
-        head_height_px = head_bottom - head_top
-        head_ratio = head_height_px / self.h
-        head_pct = head_ratio * 100
-        
-        # ✅ FIX 5: Sanity check - if head ratio is improbable, use geometric fallback
-        if not (0.45 <= head_ratio <= 0.75):
-            # Detection anomaly - use conservative estimate
-            # Assume face should be ~60% of image height
-            estimated_height = self.h * 0.60
-            center_y = self.h * 0.50
-            head_top = int(center_y - estimated_height / 2)
-            head_bottom = int(center_y + estimated_height / 2)
-            
-            # Recalculate eye position (60% from bottom as typical)
-            eye_y = self.h * 0.40  # 60% from bottom = 40% from top
-            
-            head_height_px = head_bottom - head_top
-            head_ratio = head_height_px / self.h
-            head_pct = head_ratio * 100
-        
-        # Build faceBox for frontend visualization
-        face_box = {
-            "top": head_top,
-            "bottom": head_bottom,
-            "left": head_left,
-            "right": head_right,
+        # ✅ Always return faceBox with all coordinates
+        faceBox = {
+            "top": int(top_y),
+            "bottom": int(chin_y),
             "eyeY": int(eye_y),
-            "chin_y": bounds.get('chin_y', head_bottom),
-            "forehead_y": bounds.get('forehead_y', head_top),
-            "method": "facemesh",
+            "left": xmin,
+            "right": xmin + fw,
+            "centerX": center_x,
             "image_height": self.h,
             "image_width": self.w,
-            "head_ratio": round(head_ratio, 3)
+            "method": "facemesh" if lms is not None else "facedetection"
         }
         
-        # ✅ DV Requirement: Head height 50-69%
-        head_ok = 50 <= head_pct <= 69
-        items.append(json_param(
-            'Head Height',
-            f'{head_pct:.1f}%',
-            '50–69% of image height',
-            head_ok,
-            rec='Adjust camera distance so head occupies 50–69% of frame.',
-            fix='Move closer or further from camera so your head (top to chin) fills 50-69% of photo height.',
-            extra={"head_height_pct": head_pct, "faceBox": face_box}
-        ))
-        
-        # ✅ DV Requirement: Eye level 56-69% from bottom
-        eye_ok = 56 <= eye_pct <= 69
-        items.append(json_param(
-            'Eye Level',
-            f'{eye_pct:.1f}%',
-            '56–69% from bottom',
-            eye_ok,
-            rec='Adjust camera height so eyes are 56–69% from bottom.',
-            fix='Reposition camera vertically so your eyes are 56-69% from the bottom of the frame.',
-            extra={"eye_level_pct": eye_pct, "faceBox": face_box}
-        ))
-        
-        # Head centering
-        face_center_x = (head_left + head_right) / 2
-        face_center_y = (head_top + head_bottom) / 2
-        img_center_x = self.w / 2
-        img_center_y = self.h / 2
-        
-        offset_x_pct = abs(face_center_x - img_center_x) / self.w * 100
-        offset_y_pct = abs(face_center_y - img_center_y) / self.h * 100
-        dist_ratio = np.sqrt((offset_x_pct / 100) ** 2 + (offset_y_pct / 100) ** 2)
-        
-        centered = dist_ratio < 0.10
-        centering_value = 'Centered' if centered else f'Off by {dist_ratio * 100:.1f}%'
-        
-        items.append(json_param(
-            'Head Centering',
-            centering_value,
-            'Centered',
-            centered,
-            rec='Center your head both horizontally and vertically.',
-            fix='Position yourself in the center of the frame.',
-            extra={"offset_x_pct": offset_x_pct, "offset_y_pct": offset_y_pct, "faceBox": face_box}
-        ))
-        
-        return items
+        return {
+            "faceBox": faceBox,
+            "head_ratio": head_ratio,
+            "eye_level": eye_level,
+            "center_offset": center_offset
+        }
     
     def check_background(self) -> Dict[str, Any]:
         """
-        ✅ IMPROVED: Check background using border bands (10% margin).
-        More reliable than corner sampling - analyzes full border regions.
+        Check background using border bands (10% margin).
+        Uses LAB color space for perceptual analysis.
         """
-        # Sample 10% border bands (top, bottom, left, right)
+        # Sample 10% border bands
         band_size = max(int(self.h * 0.10), 10)
         
         # Extract border regions
@@ -403,22 +269,13 @@ class BioValidator:
         left_band = self.arr[:, :band_size, :]
         right_band = self.arr[:, -band_size:, :]
         
-        # Combine all border pixels
-        bg_pixels = np.concatenate([
-            top_band.reshape(-1, 3),
-            bottom_band.reshape(-1, 3),
-            left_band.reshape(-1, 3),
-            right_band.reshape(-1, 3)
-        ], axis=0)
-        
-        # Convert to LAB for perceptual analysis
-        # Create a small sample image for conversion
+        # Combine and convert to LAB
         sample_h = min(100, self.h)
         sample_w = min(100, self.w)
         sample = cv2.resize(self.arr, (sample_w, sample_h))
         lab = cv2.cvtColor(sample, cv2.COLOR_BGR2LAB)
         
-        # Sample border regions in LAB space
+        # Sample border in LAB
         band_sample = max(int(sample_h * 0.10), 5)
         lab_top = lab[:band_sample, :, :]
         lab_bottom = lab[-band_sample:, :, :]
@@ -432,34 +289,20 @@ class BioValidator:
             lab_right.reshape(-1, 3)
         ], axis=0)
         
-        # Calculate statistics in LAB space
-        L_vals = lab_bg[:, 0]
-        A_vals = lab_bg[:, 1]
-        B_vals = lab_bg[:, 2]
-        
-        mean_L = np.mean(L_vals)
-        std_L = np.std(L_vals)
-        mean_A = np.mean(A_vals)
-        mean_B = np.mean(B_vals)
-        
-        # Color distance from neutral (128, 128 in LAB)
+        # Statistics
+        mean_L = np.mean(lab_bg[:, 0])
+        std_L = np.std(lab_bg[:, 0])
+        mean_A = np.mean(lab_bg[:, 1])
+        mean_B = np.mean(lab_bg[:, 2])
         delta_E = np.sqrt((mean_A - 128) ** 2 + (mean_B - 128) ** 2)
         
-        # Criteria for DV background
-        is_bright = mean_L > 180  # Bright (L* > 180 out of 255)
-        is_uniform = std_L < 15   # Low variance
-        is_neutral = delta_E < 10  # Near-neutral color
+        # Criteria
+        is_bright = mean_L > 180
+        is_uniform = std_L < 15
+        is_neutral = delta_E < 10
         
         ok = is_bright and is_uniform and is_neutral
         warn = (is_bright and is_uniform) or (is_bright and is_neutral)
-        
-        issues = []
-        if not is_bright:
-            issues.append("too dark")
-        if not is_uniform:
-            issues.append("uneven")
-        if not is_neutral:
-            issues.append("colored")
         
         value = f"L={mean_L:.1f} ΔE={delta_E:.1f} σ={std_L:.1f}"
         
@@ -470,39 +313,31 @@ class BioValidator:
             ok,
             warn=warn,
             rec="Use plain white/off-white background with even lighting.",
-            fix="Retake against solid white wall with uniform lighting. Avoid shadows and patterns.",
+            fix="Retake against solid white wall. Avoid shadows and patterns.",
             extra={"mean_L": float(mean_L), "std_L": float(std_L), "delta_E": float(delta_E)}
         )
     
-    def check_sharpness(self) -> Dict[str, Any]:
-        """
-        ✅ IMPROVED: Measure sharpness using Laplacian variance on face ROI.
-        More accurate than random pixel sampling.
-        """
-        if not self.landmarks:
+    def check_sharpness(self, faceBox) -> Dict[str, Any]:
+        """Measure sharpness using Laplacian variance on face ROI."""
+        if faceBox is None:
             return json_param('Sharpness', 'Unknown', 'Sharp focus', True)
         
-        bounds = self._calculate_head_bounds()
-        if not bounds:
-            return json_param('Sharpness', 'Unknown', 'Sharp focus', True)
+        x = max(0, faceBox["left"])
+        y = max(0, faceBox["top"])
+        w = min(self.w - x, faceBox["right"] - faceBox["left"])
+        h = min(self.h - y, faceBox["bottom"] - faceBox["top"])
         
-        x, y = bounds['left'], bounds['top']
-        w, h = bounds['right'] - bounds['left'], bounds['bottom'] - bounds['top']
-        x, y, w, h = self._clamp_box(x, y, w, h)
+        if w <= 0 or h <= 0:
+            return json_param('Sharpness', 'Error', 'Sharp focus', True)
         
-        # Extract face ROI
         gray = cv2.cvtColor(self.arr, cv2.COLOR_BGR2GRAY)
         roi = gray[y:y + h, x:x + w]
         
         if roi.size == 0:
-            return json_param('Sharpness', 'Error', 'Sharp focus', False,
-                            rec='Face region not found.',
-                            fix='Ensure face is fully visible in frame.')
+            return json_param('Sharpness', 'Error', 'Sharp focus', True)
         
-        # Calculate Laplacian variance
         laplacian_var = cv2.Laplacian(roi, cv2.CV_64F).var()
         
-        # Thresholds based on testing
         ok = laplacian_var >= 80
         warn = 50 <= laplacian_var < 80
         
@@ -517,19 +352,18 @@ class BioValidator:
             extra={"laplacian_variance": float(laplacian_var)}
         )
     
-    def check_lighting(self) -> Dict[str, Any]:
+    def check_lighting(self, faceBox) -> Dict[str, Any]:
         """Check face lighting balance."""
-        if not self.landmarks:
+        if faceBox is None:
             return json_param('Face Lighting', 'Unknown', 'Even lighting', True)
         
-        bounds = self._calculate_head_bounds()
-        if not bounds:
+        x = max(0, faceBox["left"])
+        y = max(0, faceBox["top"])
+        w = min(self.w - x, faceBox["right"] - faceBox["left"])
+        h = min(self.h - y, faceBox["bottom"] - faceBox["top"])
+        
+        if w <= 0 or h <= 0:
             return json_param('Face Lighting', 'Unknown', 'Even lighting', True)
-        
-        x, y = bounds['left'], bounds['top']
-        w, h = bounds['right'] - bounds['left'], bounds['bottom'] - bounds['top']
-        
-        x, y, w, h = self._clamp_box(x, y, w, h)
         
         face = self.arr[y:y + h, x:x + w]
         if face.size == 0:
@@ -563,111 +397,87 @@ class BioValidator:
     def run(self, manual_overrides: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
         """
         Run all biometric validations.
-        
-        ✅ HYBRID MODE: Supports manual overrides for alignment lines.
-        manual_overrides: Optional dict with normalized Y coordinates (0-1):
-            {"top": 0.18, "eye": 0.60, "chin": 0.86}
+        Supports manual overrides for hybrid mode.
         """
-        results, success = self.detect_face_landmarks()
+        # Calculate measurements (auto or manual)
+        calc = self.calculate(manual_overrides)
+        fb = calc.get("faceBox")
+        hr = calc.get("head_ratio")
+        el = calc.get("eye_level")
+        co = calc.get("center_offset")
         
-        if not success and not manual_overrides:
-            # Still check background even without face
+        results = []
+        
+        # Face detection check
+        if fb is None or fb.get("method") == "fallback":
+            results.append(json_param(
+                "Face Detection",
+                "Not found",
+                "One face detected",
+                False,
+                rec="No face detected; retake clearly face-forward.",
+                fix="Ensure face is visible, well-lit, and facing camera."
+            ))
             results.append(self.check_background())
             return results
         
-        # ✅ HYBRID: If manual overrides provided, use them instead of auto-detection
-        if manual_overrides:
-            results.extend(self._calculate_manual_metrics(manual_overrides))
-        else:
-            # Run all checks with auto-detection
-            results.extend(self.calculate_head_metrics())
+        # One person check
+        results.append(json_param('One Person Only', '1 face', 'Exactly one face', True))
         
+        # Head Height check (50-69%)
+        if hr is not None:
+            ok = 50 <= hr <= 69
+            warn = (45 <= hr < 50) or (69 < hr <= 72)
+            results.append(json_param(
+                "Head Height",
+                f"{hr:.1f}%",
+                "50–69% of image height",
+                ok,
+                warn=warn,
+                rec="Top of head to chin must cover 50–69% of image.",
+                fix="Adjust camera distance or reframe to fill 50-69% with your head.",
+                extra={"head_height_pct": hr, "faceBox": fb}
+            ))
+        
+        # Eye Level check (56-69% from bottom)
+        if el is not None:
+            ok = 56 <= el <= 69
+            warn = (53 <= el < 56) or (69 < el <= 72)
+            results.append(json_param(
+                "Eye Level",
+                f"{el:.1f}%",
+                "56–69% from bottom",
+                ok,
+                warn=warn,
+                rec="Eyes should appear slightly above midline.",
+                fix="Raise or lower camera so eyes fall in 56–69% zone.",
+                extra={"eye_level_pct": el, "faceBox": fb}
+            ))
+        
+        # Head Centering check (±5%)
+        if co is not None:
+            ok = co <= 5.0
+            warn = 5.0 < co <= 8.0
+            results.append(json_param(
+                "Head Centering",
+                f"{co:.1f}% offset",
+                "Centered ±5%",
+                ok,
+                warn=warn,
+                rec="Align your face to center of image.",
+                fix="Shift slightly left/right to center face.",
+                extra={"offset_pct": co, "faceBox": fb}
+            ))
+        
+        # Background, sharpness, lighting
         results.append(self.check_background())
+        results.append(self.check_sharpness(fb))
+        results.append(self.check_lighting(fb))
         
-        # Only check lighting and sharpness if we have face bounds
-        if success or manual_overrides:
-            results.append(self.check_sharpness())
-            results.append(self.check_lighting())
-        
-        # Placeholder checks (can be enhanced with ML models)
+        # Placeholder checks
         results.append(json_param('Red-Eye', 'Not detected', 'No red-eye', True))
         results.append(json_param('Glasses/Headphones', 'Not detected', 'None visible', True))
         results.append(json_param('Headgear', 'Not detected', 'None (except religious)', True))
         results.append(json_param('Facial Expression', 'Appears neutral', 'Neutral expression', True))
         
         return results
-    
-    def _calculate_manual_metrics(self, overrides: Dict[str, float]) -> List[Dict[str, Any]]:
-        """
-        ✅ HYBRID: Calculate metrics using manually adjusted alignment lines.
-        Overrides are normalized Y coordinates (0-1).
-        """
-        items = []
-        
-        # Convert normalized coordinates to pixels
-        top_y = float(overrides.get('top', 0.18)) * self.h
-        eye_y = float(overrides.get('eye', 0.60)) * self.h  
-        chin_y = float(overrides.get('chin', 0.86)) * self.h
-        center_x = self.w / 2.0  # Assume centered for manual mode
-        
-        # Clamp to bounds
-        top_y = max(0, min(self.h - 1, top_y))
-        eye_y = max(0, min(self.h - 1, eye_y))
-        chin_y = max(0, min(self.h - 1, chin_y))
-        
-        # Calculate metrics
-        head_height_px = chin_y - top_y
-        head_ratio = head_height_px / self.h
-        head_pct = head_ratio * 100
-        
-        eye_pct = (self.h - eye_y) / self.h * 100
-        
-        # Build faceBox
-        face_box = {
-            "top": int(top_y),
-            "bottom": int(chin_y),
-            "left": 0,
-            "right": self.w,
-            "eyeY": int(eye_y),
-            "chin_y": int(chin_y),
-            "forehead_y": int(top_y),
-            "method": "manual",
-            "image_height": self.h,
-            "image_width": self.w,
-            "head_ratio": round(head_ratio, 3)
-        }
-        
-        # Head Height validation
-        head_ok = 50 <= head_pct <= 69
-        items.append(json_param(
-            'Head Height',
-            f'{head_pct:.1f}%',
-            '50–69% of image height',
-            head_ok,
-            rec='Adjust distance so head occupies 50–69% of the frame.',
-            fix='Move closer to or further from the camera so your head fills 50-69% of the photo height.',
-            extra={"head_height_pct": head_pct, "faceBox": face_box}
-        ))
-        
-        # Eye Level validation  
-        eye_ok = 56 <= eye_pct <= 69
-        items.append(json_param(
-            'Eye Level',
-            f'{eye_pct:.1f}%',
-            '56–69% from bottom',
-            eye_ok,
-            rec='Reframe so eyes fall between 56–69% from bottom.',
-            fix='Position your eyes between 56-69% from the bottom of the photo. Adjust camera height or your position.',
-            extra={"eye_level_pct": eye_pct, "faceBox": face_box}
-        ))
-        
-        # Head Centering (assumed centered in manual mode)
-        items.append(json_param(
-            'Head Centering',
-            'Centered (manual)',
-            'Centered',
-            True,
-            extra={"faceBox": face_box}
-        ))
-        
-        return items
