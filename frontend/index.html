@@ -227,6 +227,7 @@ const I18N = {
 
 let LANG = localStorage.getItem('lang') || (navigator.language.startsWith('ru') ? 'ru' : 'en');
 
+// ✅ FIX: Apply i18n and redraw overlay with translated labels
 function applyI18N(){
   document.querySelectorAll('[data-i18n]').forEach(el=>{
     const key = el.getAttribute('data-i18n');
@@ -236,7 +237,10 @@ function applyI18N(){
     const key = el.getAttribute('data-i18n-title');
     if (I18N[LANG][key]) el.title = I18N[LANG][key];
   });
-  drawOverlay(); // refresh overlay labels
+  // ✅ Redraw overlay with translated labels
+  if(img.naturalHeight > 0) {
+    drawOverlay();
+  }
 }
 
 // ---------------- Dark mode ----------------
@@ -248,7 +252,8 @@ function applyI18N(){
 // ---------------- Elements ----------------
 const img = document.getElementById('photo');
 const overlay = document.getElementById('overlay');
-const ctx = overlay.getContext('2d');
+// ✅ FIX: Canvas performance - willReadFrequently for getImageData calls
+const ctx = overlay.getContext('2d', { willReadFrequently: true });
 const fileInput = document.getElementById('fileInput');
 const dropZone = document.getElementById('dropZone');
 const previewWrap = document.getElementById('previewWrap');
@@ -571,7 +576,13 @@ showHints.addEventListener('change', drawOverlay);
 document.getElementById('langToggle').addEventListener('click',()=>{ 
   LANG = LANG==='en'?'ru':'en'; 
   localStorage.setItem('lang', LANG); 
-  applyI18N(); 
+  applyI18N();
+  
+  // ✅ Re-render validation results if they exist (to translate labels)
+  if(lastValidationResult && lastValidationResult.technical) {
+    const items = [...(lastValidationResult.technical||[]), ...(lastValidationResult.biometric||[])];
+    renderRows(items);
+  }
 });
 
 // Dark mode toggle
