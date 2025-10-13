@@ -20,7 +20,8 @@
   .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--ink);padding:8px 10px;border-radius:10px;cursor:pointer;box-shadow:var(--shadow);transition:all .2s}
   .btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(2,6,23,.1)}
-  .btn.brand{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.brand{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600;padding:12px 20px;font-size:16px;border-radius:12px;box-shadow:0 4px 12px rgba(37,99,235,.3)}
+  .btn.brand:hover{transform:scale(1.05);box-shadow:0 6px 16px rgba(37,99,235,.4)}
   .btn.ghost{background:transparent;box-shadow:none}
   .uploader{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .pane{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;transition:all .3s}
@@ -88,6 +89,7 @@
       <div class="actions">
         <button id="langToggle" class="btn">EN / RU</button>
         <button id="darkToggle" class="btn ghost">🌓</button>
+        <button id="newPhotoBtn" class="btn ghost" data-i18n="new_photo" style="display:none">New Photo</button>
         <button id="validateBtn" class="btn brand" data-i18n="validate_btn" disabled>Validate</button>
       </div>
     </header>
@@ -152,6 +154,7 @@ const I18N = {
     upload_title:"Drag & drop your photo here", upload_subtitle:"or click to browse", upload_drop:"Drop photo here",
     validate_btn:"Validate", show_hints:"Show alignment hints",
     manual_btn:"Adjust Lines", save_btn:"Save & Re‑check", reset_btn:"Reset",
+    new_photo:"New Photo",
     overall_quality:"Overall quality", checks_title:"Validation Results",
     no_results:"Upload and validate a photo to see results",
     disclaimer:"⚠️ This tool provides automated estimates based on DV Lottery guidelines. Always review your final photo before submission.",
@@ -184,13 +187,35 @@ const I18N = {
     "Error Level Analysis":"Error Level Analysis",
     "Metadata Consistency":"Metadata Consistency",
     "Noise Pattern":"Noise Pattern",
-    "Color Channels":"Color Channels"
+    "Color Channels":"Color Channels",
+    // ✅ FIX: Recommendations and fixes (English)
+    "rec_PhotoDimensions":"Photo must be square (600×600 to 1200×1200 pixels).",
+    "fix_PhotoDimensions":"Crop photo to square format with proper dimensions.",
+    "rec_FileSize":"File size must be 240 KB or less.",
+    "fix_FileSize":"Compress image or reduce resolution.",
+    "rec_Brightness":"Brightness should be in range 45-65%.",
+    "fix_Brightness":"Adjust lighting or photo exposure.",
+    "rec_Contrast":"Contrast should be good for detail clarity.",
+    "fix_Contrast":"Increase contrast for better detail visibility.",
+    "rec_Sharpness":"Photo must be sharp and in focus.",
+    "fix_Sharpness":"Retake photo with proper focus.",
+    "rec_HeadHeight":"Head must occupy 50-69% of photo height.",
+    "fix_HeadHeight":"Move away from camera or adjust framing.",
+    "rec_EyeLevel":"Eyes should be at 56-69% from bottom edge.",
+    "fix_EyeLevel":"Raise or lower camera for proper eye position.",
+    "rec_HeadCentering":"Head should be centered in frame.",
+    "fix_HeadCentering":"Shift left or right to center.",
+    "rec_Background":"Background should be plain white or light gray.",
+    "fix_Background":"Use white wall or plain background.",
+    "rec_FaceLighting":"Face should be evenly lit.",
+    "fix_FaceLighting":"Use soft front lighting."
   },
   ru:{
     app_title:"Проверка фото для DV Лотереи",
     upload_title:"Перетащите фото сюда", upload_subtitle:"или нажмите для выбора", upload_drop:"Отпустите фото",
     validate_btn:"Проверить", show_hints:"Показывать подсказки выравнивания",
     manual_btn:"Подстроить линии", save_btn:"Сохранить и перепроверить", reset_btn:"Сбросить",
+    new_photo:"Новое фото",
     overall_quality:"Общая оценка", checks_title:"Результаты проверки",
     no_results:"Загрузите и проверьте фото чтобы увидеть результаты",
     disclaimer:"⚠️ Этот инструмент выполняет автоматическую оценку по требованиям DV Lottery. Всегда проверяйте финальное фото перед отправкой.",
@@ -221,7 +246,28 @@ const I18N = {
     "Error Level Analysis":"Анализ уровня ошибок",
     "Metadata Consistency":"Согласованность метаданных",
     "Noise Pattern":"Паттерн шума",
-    "Color Channels":"Цветовые каналы"
+    "Color Channels":"Цветовые каналы",
+    // ✅ FIX: Recommendations and fixes (Russian)
+    "rec_PhotoDimensions":"Фото должно быть квадратным (600×600 до 1200×1200 пикселей).",
+    "fix_PhotoDimensions":"Обрежьте фото до квадратной формы с правильными размерами.",
+    "rec_FileSize":"Размер файла должен быть не более 240 КБ.",
+    "fix_FileSize":"Сожмите изображение или уменьшите разрешение.",
+    "rec_Brightness":"Яркость должна быть в диапазоне 45-65%.",
+    "fix_Brightness":"Отрегулируйте освещение или экспозицию фото.",
+    "rec_Contrast":"Контрастность должна быть хорошей для четкости деталей.",
+    "fix_Contrast":"Увеличьте контрастность для лучшей видимости деталей.",
+    "rec_Sharpness":"Фото должно быть четким и сфокусированным.",
+    "fix_Sharpness":"Переснимите фото с правильной фокусировкой.",
+    "rec_HeadHeight":"Голова должна занимать 50-69% высоты фотографии.",
+    "fix_HeadHeight":"Отодвиньтесь от камеры или измените масштаб.",
+    "rec_EyeLevel":"Глаза должны находиться на 56-69% от нижнего края.",
+    "fix_EyeLevel":"Поднимите или опустите камеру для правильного положения глаз.",
+    "rec_HeadCentering":"Голова должна быть отцентрирована в кадре.",
+    "fix_HeadCentering":"Сместитесь влево или вправо для центрирования.",
+    "rec_Background":"Фон должен быть однотонным белым или светло-серым.",
+    "fix_Background":"Используйте белую стену или фон без узоров.",
+    "rec_FaceLighting":"Лицо должно быть равномерно освещено.",
+    "fix_FaceLighting":"Используйте мягкое фронтальное освещение."
   }
 };
 
@@ -416,7 +462,7 @@ function rowIcon(status){
   return status==='pass'?'✅':(status==='warning'?'⚠️':'❌'); 
 }
 
-// ✅ FIX 2: Fully localized row rendering
+// ✅ FIX 2: Fully localized row rendering with translated recommendations
 function renderRows(items){
   if(!items || items.length === 0){
     rows.innerHTML = '<div style="text-align:center;color:var(--sub);padding:20px" data-i18n="no_results">Upload and validate a photo to see results</div>';
@@ -433,10 +479,17 @@ function renderRows(items){
     const cur = p.value ?? '—';
     const exp = p.expected ?? '—';
     
-    // ✅ Keep recommendation and how_to_fix in original language from backend
-    // These are already context-specific and don't need translation keys
-    const rec = p.recommendation ? `<div class="rec">${p.recommendation}</div>`:'';
-    const fix = p.how_to_fix ? `<div class="fix">💡 ${p.how_to_fix}</div>`:'';
+    // ✅ FIX: Use translated recommendations and fixes
+    const recKey = 'rec_' + p.name.replace(/\s/g, '');
+    const fixKey = 'fix_' + p.name.replace(/\s/g, '');
+    
+    const rec = I18N[LANG][recKey] ? 
+      `<div class="rec">${I18N[LANG][recKey]}</div>` : 
+      (p.recommendation ? `<div class="rec">${p.recommendation}</div>` : '');
+      
+    const fix = I18N[LANG][fixKey] ? 
+      `<div class="fix">💡 ${I18N[LANG][fixKey]}</div>` : 
+      (p.how_to_fix ? `<div class="fix">💡 ${p.how_to_fix}</div>` : '');
     
     return `
       <div class="row ${cls}" onclick="this.classList.toggle('open')">
@@ -475,6 +528,8 @@ function handleFile(file){
     previewWrap.style.display = 'flex';
     controls.style.display = 'flex';
     validateBtn.disabled = false;
+    // ✅ Show "New Photo" button after upload
+    document.getElementById('newPhotoBtn').style.display = 'inline-block';
     syncOverlay();
     URL.revokeObjectURL(url);
   };
@@ -532,6 +587,19 @@ validateBtn.addEventListener('click', async()=>{
     renderRows(items);
     drawOverlay();
     
+    // ✅ UX Enhancement: Smooth scroll to results and highlight issues
+    setTimeout(() => {
+      document.querySelector('.results').scrollIntoView({behavior: 'smooth', block: 'start'});
+      
+      // Highlight failed/warning items with animation
+      document.querySelectorAll('.row.fail, .row.warn').forEach(el => {
+        el.animate([
+          { opacity: 0.5, transform: 'scale(0.98)' },
+          { opacity: 1, transform: 'scale(1)' }
+        ], { duration: 600, easing: 'ease-out' });
+      });
+    }, 300);
+    
   } catch(err) {
     alert(`Validation error: ${err.message}`);
   } finally {
@@ -571,6 +639,38 @@ document.getElementById('resetManualBtn').addEventListener('click',()=>{
 
 // Show hints toggle
 showHints.addEventListener('change', drawOverlay);
+
+// ✅ New Photo button - reset everything
+document.getElementById('newPhotoBtn').addEventListener('click', () => {
+  currentFile = null;
+  lastValidationResult = null;
+  
+  // Reset image
+  img.src = '';
+  
+  // Reset UI
+  dropZone.style.display = 'block';
+  previewWrap.style.display = 'none';
+  controls.style.display = 'none';
+  document.getElementById('newPhotoBtn').style.display = 'none';
+  
+  // Reset validation results
+  rows.innerHTML = '<div style="text-align:center;color:var(--sub);padding:20px" data-i18n="no_results">Upload and validate a photo to see results</div>';
+  updateScoreMeter(0);
+  scorePct.textContent = '–%';
+  
+  // Reset manual mode
+  manualMode = false;
+  document.getElementById('saveManualBtn').style.display = 'none';
+  document.getElementById('resetManualBtn').style.display = 'none';
+  
+  // Reset lines to default
+  lines.top = 0.18;
+  lines.eye = 0.60;
+  lines.chin = 0.86;
+  
+  applyI18N();
+});
 
 // Language toggle
 document.getElementById('langToggle').addEventListener('click',()=>{ 
