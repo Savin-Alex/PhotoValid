@@ -47,7 +47,10 @@
     .row{display:flex;justify-content:space-between;align-items:center}
     .status{padding:2px 10px;border-radius:999px;font-size:.85rem;font-weight:700}
     .pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.warn{background:#fef3c7;color:#92400e}
-    #overlay{position:absolute;inset:0;pointer-events:none}
+    /* ✅ FIX: Pixel-perfect overlay positioning */
+    .photo-container{position:relative;background:#f1f5f9;border-radius:12px;height:420px;display:grid;place-items:center;overflow:hidden}
+    #preview{max-width:100%;max-height:420px;display:none;position:relative;z-index:1;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
+    #overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:auto;cursor:crosshair;z-index:2;touch-action:none}
     .header-controls{display:flex;gap:12px;align-items:center}
     .fix{color:#1d4ed8;font-size:0.9rem;margin-top:4px}
     .rec{color:var(--text-secondary);font-size:0.9rem}
@@ -81,10 +84,10 @@
         <button class="btn" id="saveManual" style="display:none;font-size:0.85rem;padding:4px 12px;background:#22c55e">💾 Save & Re-Validate</button>
         <button class="btn" id="resetManual" style="display:none;font-size:0.85rem;padding:4px 12px">↺ Reset</button>
       </div>
-      <div style="margin-top:16px;position:relative;background:#f1f5f9;border-radius:12px;height:420px;display:grid;place-items:center;overflow:hidden">
-        <img id="preview" style="max-width:100%;max-height:420px;display:none" />
+      <div class="photo-container">
+        <img id="preview" draggable="false" alt="Photo preview" />
         <canvas id="overlay"></canvas>
-        <div id="placeholder" style="color:#94a3b8">No image</div>
+        <div id="placeholder" style="color:#94a3b8;position:absolute">No image</div>
       </div>
       <button class="btn" id="run" style="margin-top:12px;display:none">Validate</button>
     </section>
@@ -235,14 +238,7 @@ function handleFile(f) {
     img.style.display = 'block';
     placeholder.style.display = 'none';
     runBtn.style.display = 'inline-block';
-    
-    // ✅ FIX: Use naturalWidth/naturalHeight for pixel-perfect alignment
-    // clientWidth/clientHeight are CSS-scaled and cause misalignment
-    overlay.width = img.naturalWidth;
-    overlay.height = img.naturalHeight;
-    
-    const ctx = overlay.getContext('2d');
-    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    syncOverlay();
   }
 }
 
@@ -278,21 +274,28 @@ function render(j) {
   fill('bio', bioItems);
   fill('tamper', tamperItems);
   
-  // ✅ HYBRID: Extract auto-detected faceBox and store normalized coordinates
+  // ✅ HYBRID: Extract auto-detected faceBox and normalize coordinates
   const headHeight = bioItems.find(p => p.name === 'Head Height' && p.faceBox);
   if (headHeight && headHeight.faceBox) {
     const fb = headHeight.faceBox;
-    if (fb.image_height && fb.image_height > 0) {
+    const imgHeight = img.naturalHeight || fb.image_height;
+    
+    if (imgHeight && imgHeight > 0) {
       // Convert absolute pixels to normalized coordinates (0-1)
-      autoLines.top = fb.top / fb.image_height;
-      autoLines.eye = fb.eyeY / fb.image_height;
-      autoLines.chin = fb.bottom / fb.image_height;
+      const topNorm = fb.top / imgHeight;
+      const eyeNorm = fb.eyeY / imgHeight;
+      const chinNorm = fb.bottom / imgHeight;
       
-      // Only update current lines if not in manual mode
+      // Store auto lines
+      autoLines.top = topNorm;
+      autoLines.eye = eyeNorm;
+      autoLines.chin = chinNorm;
+      
+      // Only update current lines if not in manual mode or if this is auto-detection
       if (!manualMode || fb.method !== 'manual') {
-        lines.top = autoLines.top;
-        lines.eye = autoLines.eye;
-        lines.chin = autoLines.chin;
+        lines.top = topNorm;
+        lines.eye = eyeNorm;
+        lines.chin = chinNorm;
       }
       
       // Show manual adjustment button
@@ -324,16 +327,49 @@ function fill(id, items) {
 
 let lastResult = null;
 
+// ✅ FIX: Sync overlay canvas to displayed image (pixel-perfect, HiDPI-safe)
+function syncOverlay() {
+  const ctx = overlay.getContext('2d');
+  const rect = img.getBoundingClientRect();
+  
+  // Match CSS size and position
+  overlay.style.left = img.offsetLeft + 'px';
+  overlay.style.top = img.offsetTop + 'px';
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+  
+  // Match backing store (HiDPI safe)
+  const dpr = window.devicePixelRatio || 1;
+  overlay.width = Math.max(1, Math.floor(rect.width * dpr));
+  overlay.height = Math.max(1, Math.floor(rect.height * dpr));
+  
+  // Scale context for CSS pixels
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  
+  // Redraw after resizing
+  if (lastResult) {
+    drawOverlay(lastResult);
+  }
+}
+
+// Sync on window resize
+window.addEventListener('resize', syncOverlay);
+
 function drawOverlay(j){
   const show = document.getElementById('showHints').checked;
   const ctx = overlay.getContext('2d');
+  
+  // Get CSS dimensions for drawing
+  const w = overlay.clientWidth;
+  const h = overlay.clientHeight;
+  
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   
   if (!show) {
     return;
   }
   
-  // ✅ HYBRID: Draw lines using normalized coordinates for pixel-perfect alignment
+  // ✅ HYBRID: Draw lines using normalized coordinates in CSS pixels
   const guides = [
     { key: 'top', y: lines.top, label: 'Top of Head', color: '#22c55e', dash: [5, 5] },
     { key: 'eye', y: lines.eye, label: 'Eye Level (56-69%)', color: '#3b82f6', dash: [3, 3] },
@@ -341,54 +377,56 @@ function drawOverlay(j){
   ];
   
   guides.forEach(g => {
-    const y = g.y * overlay.height;
+    if (lines[g.key] == null) return;  // Skip if missing
+    
+    const y = g.y * h;  // Convert normalized to CSS pixels
     
     // Draw line
     ctx.strokeStyle = g.color;
-    ctx.lineWidth = manualMode ? 4 : 3;
+    ctx.lineWidth = manualMode ? 3 : 2;
     ctx.setLineDash(g.dash);
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.lineTo(overlay.width, y);
+    ctx.lineTo(w, y);
     ctx.stroke();
     
     // Draw center dot
     ctx.fillStyle = g.color;
     ctx.beginPath();
-    ctx.arc(overlay.width / 2, y, manualMode ? 8 : 5, 0, 2 * Math.PI);
+    ctx.arc(w / 2, y, manualMode ? 6 : 4, 0, 2 * Math.PI);
     ctx.fill();
     
     // Draw label with background
-    ctx.fillStyle = g.color + 'CC';
-    ctx.font = 'bold 13px sans-serif';
+    ctx.fillStyle = g.color + 'DD';
+    ctx.font = 'bold 12px system-ui, sans-serif';
     const metrics = ctx.measureText(g.label);
-    ctx.fillRect(8, y - 20, metrics.width + 8, 16);
+    ctx.fillRect(8, Math.max(2, y - 18), metrics.width + 8, 14);
     
     ctx.fillStyle = '#fff';
-    ctx.fillText(g.label, 12, y - 7);
+    ctx.fillText(g.label, 12, Math.max(12, y - 6));
     
     // Draw drag handle in manual mode
     if (manualMode) {
       ctx.fillStyle = g.color;
-      ctx.fillRect(overlay.width - 40, y - 3, 30, 6);
+      ctx.fillRect(w - 35, y - 2, 25, 4);
     }
   });
   
   // Center guidelines
   ctx.setLineDash([2, 2]); 
-  ctx.strokeStyle = 'rgba(156, 163, 175, .6)';
+  ctx.strokeStyle = 'rgba(156, 163, 175, .5)';
   ctx.lineWidth = 1;
   ctx.beginPath(); 
-  ctx.moveTo(overlay.width / 2, 0); 
-  ctx.lineTo(overlay.width / 2, overlay.height); 
+  ctx.moveTo(w / 2, 0); 
+  ctx.lineTo(w / 2, h); 
   ctx.stroke();
   ctx.beginPath(); 
-  ctx.moveTo(0, overlay.height / 2); 
-  ctx.lineTo(overlay.width, overlay.height / 2); 
+  ctx.moveTo(0, h / 2); 
+  ctx.lineTo(w, h / 2); 
   ctx.stroke();
 }
 
-// ✅ HYBRID MODE: Manual line adjustment with drag
+// ✅ HYBRID MODE: Manual line adjustment with unified pointer events
 function nearestLine(yNorm) {
   const keys = ['top', 'eye', 'chin'];
   return keys.reduce((a, b) => 
@@ -396,45 +434,53 @@ function nearestLine(yNorm) {
   );
 }
 
-overlay.addEventListener('mousedown', e => {
-  if (!manualMode) return;
+function getNormY(e) {
   const rect = overlay.getBoundingClientRect();
-  const yNorm = (e.clientY - rect.top) / overlay.height;
+  return Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+}
+
+overlay.addEventListener('pointerdown', e => {
+  if (!manualMode) return;
+  e.preventDefault();
+  overlay.setPointerCapture(e.pointerId);
+  
+  const yNorm = getNormY(e);
   const key = nearestLine(yNorm);
+  
   if (Math.abs(lines[key] - yNorm) < 0.05) {
     dragging.key = key;
     overlay.style.cursor = 'ns-resize';
   }
 });
 
-overlay.addEventListener('mousemove', e => {
+overlay.addEventListener('pointermove', e => {
   if (!manualMode) {
-    overlay.style.cursor = 'default';
+    overlay.style.cursor = 'crosshair';
     return;
   }
   
   if (dragging.key) {
-    const rect = overlay.getBoundingClientRect();
-    const yNorm = Math.max(0, Math.min(1, (e.clientY - rect.top) / overlay.height));
-    lines[dragging.key] = yNorm;
+    e.preventDefault();
+    lines[dragging.key] = getNormY(e);
     drawOverlay(lastResult);
   } else {
     // Show cursor hint when near a line
-    const rect = overlay.getBoundingClientRect();
-    const yNorm = (e.clientY - rect.top) / overlay.height;
+    const yNorm = getNormY(e);
     const key = nearestLine(yNorm);
-    overlay.style.cursor = Math.abs(lines[key] - yNorm) < 0.05 ? 'ns-resize' : 'default';
+    overlay.style.cursor = Math.abs(lines[key] - yNorm) < 0.05 ? 'ns-resize' : 'crosshair';
   }
 });
 
-overlay.addEventListener('mouseup', () => {
+overlay.addEventListener('pointerup', e => {
+  if (!manualMode) return;
+  overlay.releasePointerCapture(e.pointerId);
   dragging.key = null;
-  overlay.style.cursor = manualMode ? 'default' : 'default';
+  overlay.style.cursor = 'crosshair';
 });
 
-overlay.addEventListener('mouseleave', () => {
+overlay.addEventListener('pointercancel', e => {
   dragging.key = null;
-  overlay.style.cursor = 'default';
+  overlay.style.cursor = 'crosshair';
 });
 
 // Button handlers
