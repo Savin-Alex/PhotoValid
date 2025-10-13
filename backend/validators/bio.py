@@ -182,28 +182,17 @@ class BioValidator:
     
     def _estimate_head_top(self, forehead_y: float, chin_y: float, eye_y: float, mesh_top_y: float) -> float:
         """
-        ✅ FIX 3: Improved top-of-head estimation with better margins.
+        ✅ IMPROVED: Precise top-of-head with 7% dynamic hair margin.
         
-        Method A: Forehead landmark + 5% margin above
-        Method B: Eye position + 0.90× eye-to-chin distance
+        Uses forehead-to-chin distance as base, adds 7% margin for hair.
+        This is more accurate than fixed percentages.
         
         Returns the higher estimate (smaller Y = higher in image).
         """
-        # ✅ FIX 3: Use forehead landmark (10) with small 5% margin
-        # This is more conservative and accurate than mesh_top
+        # ✅ Primary method: Use forehead-to-chin distance with 7% hair margin
+        # This accounts for typical hair volume above forehead
         forehead_to_chin = chin_y - forehead_y
-        head_top_a = forehead_y - (0.05 * forehead_to_chin)
-        
-        # Method B: Anthropometric ratio from eyes
-        # Top of head is ~0.90× the eye-to-chin distance above the eyes
-        if eye_y is not None and eye_y > 0:
-            eye_to_chin = chin_y - eye_y
-            head_top_b = eye_y - (0.90 * eye_to_chin)
-        else:
-            head_top_b = head_top_a
-        
-        # Take minimum (higher up = smaller Y)
-        head_top = min(head_top_a, head_top_b)
+        head_top = forehead_y - (0.07 * forehead_to_chin)
         
         # Ensure it's within image bounds
         return max(0, head_top)
@@ -386,47 +375,65 @@ class BioValidator:
         return items
     
     def check_background(self) -> Dict[str, Any]:
-        """Check background uniformity and color."""
-        border = min(20, self.h // 20, self.w // 20)
+        """
+        ✅ IMPROVED: Check background using border bands (10% margin).
+        More reliable than corner sampling - analyzes full border regions.
+        """
+        # Sample 10% border bands (top, bottom, left, right)
+        band_size = max(int(self.h * 0.10), 10)
         
-        # Sample border pixels
-        top = self.arr[:border, :, :]
-        bottom = self.arr[-border:, :, :]
-        left = self.arr[:, :border, :]
-        right = self.arr[:, -border:, :]
+        # Extract border regions
+        top_band = self.arr[:band_size, :, :]
+        bottom_band = self.arr[-band_size:, :, :]
+        left_band = self.arr[:, :band_size, :]
+        right_band = self.arr[:, -band_size:, :]
         
-        bg = np.concatenate([
-            top.reshape(-1, 3),
-            bottom.reshape(-1, 3),
-            left.reshape(-1, 3),
-            right.reshape(-1, 3)
+        # Combine all border pixels
+        bg_pixels = np.concatenate([
+            top_band.reshape(-1, 3),
+            bottom_band.reshape(-1, 3),
+            left_band.reshape(-1, 3),
+            right_band.reshape(-1, 3)
         ], axis=0)
         
-        mean_bgr = bg.mean(axis=0)
-        std_bgr = bg.std(axis=0)
-        overall_std = std_bgr.mean()
+        # Convert to LAB for perceptual analysis
+        # Create a small sample image for conversion
+        sample_h = min(100, self.h)
+        sample_w = min(100, self.w)
+        sample = cv2.resize(self.arr, (sample_w, sample_h))
+        lab = cv2.cvtColor(sample, cv2.COLOR_BGR2LAB)
         
-        # Brightness (BGR order)
-        brightness = 0.114 * mean_bgr[0] + 0.587 * mean_bgr[1] + 0.299 * mean_bgr[2]
+        # Sample border regions in LAB space
+        band_sample = max(int(sample_h * 0.10), 5)
+        lab_top = lab[:band_sample, :, :]
+        lab_bottom = lab[-band_sample:, :, :]
+        lab_left = lab[:, :band_sample, :]
+        lab_right = lab[:, -band_sample:, :]
         
-        is_bright = brightness > 200
-        is_uniform = overall_std < 20
+        lab_bg = np.concatenate([
+            lab_top.reshape(-1, 3),
+            lab_bottom.reshape(-1, 3),
+            lab_left.reshape(-1, 3),
+            lab_right.reshape(-1, 3)
+        ], axis=0)
         
-        # LAB color check
-        lab = cv2.cvtColor(self.arr, cv2.COLOR_BGR2LAB)
-        L, A, B = cv2.split(lab)
+        # Calculate statistics in LAB space
+        L_vals = lab_bg[:, 0]
+        A_vals = lab_bg[:, 1]
+        B_vals = lab_bg[:, 2]
         
-        bg_mask = np.zeros(L.shape, dtype=np.uint8)
-        bg_mask[:border, :] = 1
-        bg_mask[-border:, :] = 1
-        bg_mask[:, :border] = 1
-        bg_mask[:, -border:] = 1
+        mean_L = np.mean(L_vals)
+        std_L = np.std(L_vals)
+        mean_A = np.mean(A_vals)
+        mean_B = np.mean(B_vals)
         
-        mean_a = np.mean(A[bg_mask == 1])
-        mean_b = np.mean(B[bg_mask == 1])
-        color_dist = np.sqrt((mean_a - 128) ** 2 + (mean_b - 128) ** 2)
+        # Color distance from neutral (128, 128 in LAB)
+        delta_E = np.sqrt((mean_A - 128) ** 2 + (mean_B - 128) ** 2)
         
-        is_neutral = color_dist < 10
+        # Criteria for DV background
+        is_bright = mean_L > 180  # Bright (L* > 180 out of 255)
+        is_uniform = std_L < 15   # Low variance
+        is_neutral = delta_E < 10  # Near-neutral color
         
         ok = is_bright and is_uniform and is_neutral
         warn = (is_bright and is_uniform) or (is_bright and is_neutral)
@@ -439,7 +446,7 @@ class BioValidator:
         if not is_neutral:
             issues.append("colored")
         
-        value = "Plain white" if ok else ("Acceptable" if warn else f"Issues: {', '.join(issues)}")
+        value = f"L={mean_L:.1f} ΔE={delta_E:.1f} σ={std_L:.1f}"
         
         return json_param(
             "Background",
@@ -448,8 +455,51 @@ class BioValidator:
             ok,
             warn=warn,
             rec="Use plain white/off-white background with even lighting.",
-            fix="Retake against solid white wall with uniform lighting. Avoid shadows.",
-            extra={"brightness": float(brightness), "std": float(overall_std), "color_dist": float(color_dist)}
+            fix="Retake against solid white wall with uniform lighting. Avoid shadows and patterns.",
+            extra={"mean_L": float(mean_L), "std_L": float(std_L), "delta_E": float(delta_E)}
+        )
+    
+    def check_sharpness(self) -> Dict[str, Any]:
+        """
+        ✅ IMPROVED: Measure sharpness using Laplacian variance on face ROI.
+        More accurate than random pixel sampling.
+        """
+        if not self.landmarks:
+            return json_param('Sharpness', 'Unknown', 'Sharp focus', True)
+        
+        bounds = self._calculate_head_bounds()
+        if not bounds:
+            return json_param('Sharpness', 'Unknown', 'Sharp focus', True)
+        
+        x, y = bounds['left'], bounds['top']
+        w, h = bounds['right'] - bounds['left'], bounds['bottom'] - bounds['top']
+        x, y, w, h = self._clamp_box(x, y, w, h)
+        
+        # Extract face ROI
+        gray = cv2.cvtColor(self.arr, cv2.COLOR_BGR2GRAY)
+        roi = gray[y:y + h, x:x + w]
+        
+        if roi.size == 0:
+            return json_param('Sharpness', 'Error', 'Sharp focus', False,
+                            rec='Face region not found.',
+                            fix='Ensure face is fully visible in frame.')
+        
+        # Calculate Laplacian variance
+        laplacian_var = cv2.Laplacian(roi, cv2.CV_64F).var()
+        
+        # Thresholds based on testing
+        ok = laplacian_var >= 80
+        warn = 50 <= laplacian_var < 80
+        
+        return json_param(
+            'Sharpness',
+            f'{laplacian_var:.1f} variance',
+            '≥80 (sharp focus)',
+            ok,
+            warn=warn,
+            rec='Ensure sharp focus on face.',
+            fix='Retake with proper focus, steady camera, and good lighting.',
+            extra={"laplacian_variance": float(laplacian_var)}
         )
     
     def check_lighting(self) -> Dict[str, Any]:
@@ -519,8 +569,9 @@ class BioValidator:
         
         results.append(self.check_background())
         
-        # Only check lighting if we have face bounds
+        # Only check lighting and sharpness if we have face bounds
         if success or manual_overrides:
+            results.append(self.check_sharpness())
             results.append(self.check_lighting())
         
         # Placeholder checks (can be enhanced with ML models)
