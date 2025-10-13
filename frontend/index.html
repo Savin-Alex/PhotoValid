@@ -381,7 +381,17 @@ function drawOverlay(j){
     
     const y = g.y * h;  // Convert normalized to CSS pixels
     
-    // Draw line
+    // ✅ Draw with white outline for visibility on ANY background (hair, skin, etc.)
+    // White outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = (manualMode ? 3 : 2) + 2;
+    ctx.setLineDash(g.dash);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+    
+    // Colored line on top
     ctx.strokeStyle = g.color;
     ctx.lineWidth = manualMode ? 3 : 2;
     ctx.setLineDash(g.dash);
@@ -390,23 +400,41 @@ function drawOverlay(j){
     ctx.lineTo(w, y);
     ctx.stroke();
     
-    // Draw center dot
+    // Draw center dot with white outline
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(w / 2, y, (manualMode ? 6 : 4) + 2, 0, 2 * Math.PI);
+    ctx.fill();
+    
     ctx.fillStyle = g.color;
     ctx.beginPath();
     ctx.arc(w / 2, y, manualMode ? 6 : 4, 0, 2 * Math.PI);
     ctx.fill();
     
-    // Draw label with background
-    ctx.fillStyle = g.color + 'DD';
+    // Draw label with white shadow for contrast
+    const labelY = Math.max(2, y - 18);
     ctx.font = 'bold 12px system-ui, sans-serif';
     const metrics = ctx.measureText(g.label);
-    ctx.fillRect(8, Math.max(2, y - 18), metrics.width + 8, 14);
     
+    // White shadow/outline
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(7, labelY - 1, metrics.width + 10, 16);
+    
+    // Colored background
+    ctx.fillStyle = g.color;
+    ctx.fillRect(8, labelY, metrics.width + 8, 14);
+    
+    // White text
     ctx.fillStyle = '#fff';
     ctx.fillText(g.label, 12, Math.max(12, y - 6));
     
-    // Draw drag handle in manual mode
+    // Draw drag handle in manual mode with white outline
     if (manualMode) {
+      // White outline
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(w - 36, y - 3, 27, 8);
+      
+      // Colored handle
       ctx.fillStyle = g.color;
       ctx.fillRect(w - 35, y - 2, 25, 4);
     }

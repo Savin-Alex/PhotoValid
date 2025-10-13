@@ -182,17 +182,32 @@ class BioValidator:
     
     def _estimate_head_top(self, forehead_y: float, chin_y: float, eye_y: float, mesh_top_y: float) -> float:
         """
-        ✅ IMPROVED: Precise top-of-head with 7% dynamic hair margin.
+        ✅ IMPROVED: Top of head (including hair) estimation.
         
-        Uses forehead-to-chin distance as base, adds 7% margin for hair.
-        This is more accurate than fixed percentages.
+        Uses multiple methods to find actual top of head:
+        - Mesh top (highest visible point in landmarks)
+        - Forehead + generous hair margin (15-20%)
+        - Anthropometric ratio from eyes
         
-        Returns the higher estimate (smaller Y = higher in image).
+        Returns the highest estimate (smallest Y = top of actual head).
         """
-        # ✅ Primary method: Use forehead-to-chin distance with 7% hair margin
-        # This accounts for typical hair volume above forehead
         forehead_to_chin = chin_y - forehead_y
-        head_top = forehead_y - (0.07 * forehead_to_chin)
+        
+        # Method A: Use mesh top (actual highest point detected) with small safety margin
+        head_top_mesh = mesh_top_y - (0.03 * forehead_to_chin)
+        
+        # Method B: Forehead with generous 15% margin for hair
+        head_top_forehead = forehead_y - (0.15 * forehead_to_chin)
+        
+        # Method C: Anthropometric from eyes (if available)
+        if eye_y is not None and eye_y > 0:
+            eye_to_chin = chin_y - eye_y
+            head_top_eye = eye_y - (0.95 * eye_to_chin)
+        else:
+            head_top_eye = head_top_forehead
+        
+        # Take minimum (highest position = smallest Y) for true top of head
+        head_top = min(head_top_mesh, head_top_forehead, head_top_eye)
         
         # Ensure it's within image bounds
         return max(0, head_top)
