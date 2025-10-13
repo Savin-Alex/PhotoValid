@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DV Lottery Photo Validator</title>
+  <style>
+    :root {
+      --bg-primary: #fff;
+      --bg-secondary: #f8fafc;
+      --bg-header: linear-gradient(135deg,#667eea,#764ba2);
+      --text-primary: #0b1220;
+      --text-secondary: #475569;
+      --border: #e5e7eb;
+      --drop-bg: #f8fafc;
+      --drop-border: #cbd5e1;
+      --shadow: rgba(0,0,0,.3);
+    }
+    
+    .dark {
+      --bg-primary: #1e293b;
+      --bg-secondary: #334155;
+      --bg-header: linear-gradient(135deg,#4c1d95,#7c3aed);
+      --text-primary: #f1f5f9;
+      --text-secondary: #cbd5e1;
+      --border: #475569;
+      --drop-bg: #334155;
+      --drop-border: #64748b;
+      --shadow: rgba(0,0,0,.6);
+    }
+    
+    body { 
+      font-family: ui-sans-serif,system-ui; 
+      margin:0; 
+      background:var(--bg-primary); 
+      color:var(--text-primary); 
+      transition: background 0.3s, color 0.3s;
+    }
+    .shell{max-width:1100px;margin:40px auto;background:var(--bg-primary);border-radius:16px;box-shadow:0 20px 60px var(--shadow);overflow:hidden;transition: background 0.3s, box-shadow 0.3s}
+    header{background:var(--bg-header);color:#fff;padding:24px 28px;display:flex;justify-content:space-between;align-items:center}
+    main{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:24px}
+    @media(max-width:900px){main{grid-template-columns:1fr}}
+    .drop{border:3px dashed var(--drop-border);border-radius:12px;padding:36px;text-align:center;background:var(--drop-bg);cursor:pointer;transition: all 0.3s}
+    .btn{background:var(--bg-header);color:#fff;border:none;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer;transition: opacity 0.3s}
+    .btn:hover{opacity:0.9}
+    .param{border:1px solid var(--border);border-radius:10px;padding:12px;transition: border 0.3s}
+    .row{display:flex;justify-content:space-between;align-items:center}
+    .status{padding:2px 10px;border-radius:999px;font-size:.85rem;font-weight:700}
+    .pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.warn{background:#fef3c7;color:#92400e}
+    #overlay{position:absolute;inset:0;pointer-events:none}
+    .header-controls{display:flex;gap:12px;align-items:center}
+    .fix{color:#1d4ed8;font-size:0.9rem;margin-top:4px}
+    .rec{color:var(--text-secondary);font-size:0.9rem}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <h1 id="title">📷 DV Lottery Photo Validator</h1>
+      <p>Production API-backed checker (FastAPI)</p>
+    </div>
+    <div class="header-controls">
+      <button class="btn" id="langToggle">🇬🇧 / 🇷🇺</button>
+      <button class="btn" id="darkToggle">🌓</button>
+    </div>
+  </header>
+  <main>
+    <section>
+      <div class="drop" id="drop" role="button" tabindex="0">
+        <p id="uploadHint"><strong>Upload JPEG</strong> — 600×600 to 1200×1200 px, ≤ 240 KB</p>
+        <input id="file" type="file" accept="image/jpeg" hidden />
+        <p style="margin-top:10px;color:#64748b">Click or drag&drop</p>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:var(--text-secondary)">
+          <input type="checkbox" id="showHints" checked>
+          Show alignment hints
+        </label>
+        <button class="btn" id="toggleManual" style="display:none;font-size:0.85rem;padding:4px 12px">✏️ Adjust Lines</button>
+        <button class="btn" id="saveManual" style="display:none;font-size:0.85rem;padding:4px 12px;background:#22c55e">💾 Save & Re-Validate</button>
+        <button class="btn" id="resetManual" style="display:none;font-size:0.85rem;padding:4px 12px">↺ Reset</button>
+      </div>
+      <div style="margin-top:16px;position:relative;background:#f1f5f9;border-radius:12px;height:420px;display:grid;place-items:center;overflow:hidden">
+        <img id="preview" style="max-width:100%;max-height:420px;display:none" />
+        <canvas id="overlay"></canvas>
+        <div id="placeholder" style="color:#94a3b8">No image</div>
+      </div>
+      <button class="btn" id="run" style="margin-top:12px;display:none">Validate</button>
+    </section>
+    <section>
+      <div id="score" class="param">
+        <div class="row"><h3>Overall Score</h3><div id="badge" class="status">--</div></div>
+        <div id="num" style="font-size:40px;font-weight:800;margin-top:6px">--</div>
+        <div id="msg" style="color:#475569">Upload a photo to begin</div>
+      </div>
+      <h3 style="margin:16px 0 8px">📐 Technical</h3>
+      <div id="tech" style="display:grid;gap:10px"></div>
+      <h3 style="margin:16px 0 8px">👤 Biometric & Composition</h3>
+      <div id="bio" style="display:grid;gap:10px"></div>
+      <h3 style="margin:16px 0 8px">🧪 Tampering / Photoshop Detection</h3>
+      <div id="tamper" style="display:grid;gap:10px"></div>
+      <p style="color:#f97316;font-size:0.9rem">
+        ⚠️ This automated check only provides an estimate of possible editing.
+        It should not be used as definitive proof of manipulation.
+      </p>
+    </section>
+  </main>
+</div>
+<script>
+const api = location.origin.replace(/:\d+$/, '') + ':8000'; // assume backend on 8000
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const runBtn = document.getElementById('run');
+const img = document.getElementById('preview');
+const overlay = document.getElementById('overlay');
+const placeholder = document.getElementById('placeholder');
+
+// ✅ HYBRID MODE: Manual line adjustment
+let manualMode = false;
+const lines = { top: 0.18, eye: 0.60, chin: 0.86 };  // Normalized Y coordinates (0-1)
+const autoLines = { top: 0.18, eye: 0.60, chin: 0.86 };  // Store auto-detected values
+const dragging = { key: null };
+
+// i18n support
+const locales = {
+  en: {
+    title: 'DV Lottery Photo Validator',
+    uploadHint: 'Upload JPEG — 600×600 to 1200×1200 px, ≤ 240 KB',
+    validate: 'Validate',
+    uploadToBegin: 'Upload a photo to begin',
+    analyzing: 'Analyzing…',
+    photoMeets: '✅ Photo meets DV requirements',
+    minorIssues: '⚠️ Minor issues, please fix',
+    doesNotMeet: '❌ Does not meet requirements',
+    current: 'Current:',
+    required: 'Required:',
+    pleaseUploadJpeg: 'Please upload a JPEG image',
+    fileExceeds: 'File exceeds 240KB'
+  },
+  ru: {
+    title: 'Проверка фото для DV Лотереи',
+    uploadHint: 'Загрузите JPEG — 600×600 до 1200×1200 px, ≤ 240 КБ',
+    validate: 'Проверить',
+    uploadToBegin: 'Загрузите фото для начала',
+    analyzing: 'Анализируем…',
+    photoMeets: '✅ Фото соответствует требованиям DV',
+    minorIssues: '⚠️ Незначительные проблемы, исправьте',
+    doesNotMeet: '❌ Не соответствует требованиям',
+    current: 'Текущее:',
+    required: 'Требуется:',
+    pleaseUploadJpeg: 'Пожалуйста, загрузите JPEG изображение',
+    fileExceeds: 'Файл превышает 240КБ'
+  }
+};
+
+let currentLocale = localStorage.getItem('locale') || (navigator.language.startsWith('ru') ? 'ru' : 'en');
+
+function applyLocale(l) {
+  const L = locales[l];
+  document.getElementById('title').textContent = L.title;
+  document.getElementById('uploadHint').innerHTML = `<strong>${l === 'en' ? 'Upload' : 'Загрузите'} JPEG</strong> — 600×600 ${l === 'en' ? 'to' : 'до'} 1200×1200 px, ≤ 240 ${l === 'en' ? 'KB' : 'КБ'}`;
+  document.getElementById('run').textContent = L.validate;
+  localStorage.setItem('locale', l);
+}
+
+// Dark mode support
+function setDarkMode(on) {
+  document.documentElement.classList.toggle('dark', !!on);
+  localStorage.setItem('dark', on ? '1' : '0');
+}
+
+// Initialize dark mode
+const savedDark = localStorage.getItem('dark');
+if (savedDark === null) {
+  // Auto by system preference
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  setDarkMode(prefersDark);
+} else {
+  setDarkMode(savedDark === '1');
+}
+
+// Apply initial locale
+applyLocale(currentLocale);
+
+// Event listeners
+document.getElementById('langToggle').addEventListener('click', () => {
+  currentLocale = currentLocale === 'ru' ? 'en' : 'ru';
+  applyLocale(currentLocale);
+});
+
+document.getElementById('darkToggle').addEventListener('click', () => {
+  const isDark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('dark', isDark ? '1' : '0');
+});
+
+// Visual hints toggle
+document.getElementById('showHints').addEventListener('change', () => {
+  if (lastResult) {
+    render(lastResult);
+  }
+});
+
+// Fixed file click handler (cross-browser compatibility)
+function openFileDialog(e) {
+  if (e.type === 'keydown' && !(e.key === 'Enter' || e.key === ' ')) return;
+  fileInput.click();
+}
+
+drop.addEventListener('click', openFileDialog);
+drop.addEventListener('touchstart', openFileDialog, {passive: true});
+drop.addEventListener('keydown', openFileDialog);
+
+// Drag and drop
+['dragover', 'drop'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault();
+  if (ev === 'drop') {
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  }
+}));
+
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+let currentFile = null;
+function handleFile(f) {
+  if (!/image\/jpeg/.test(f.type)) return alert(locales[currentLocale].pleaseUploadJpeg);
+  if (f.size > 240 * 1024) return alert(locales[currentLocale].fileExceeds);
+  currentFile = f;
+  const url = URL.createObjectURL(f);
+  img.src = url;
+  img.onload = () => {
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    runBtn.style.display = 'inline-block';
+    
+    // ✅ FIX: Use naturalWidth/naturalHeight for pixel-perfect alignment
+    // clientWidth/clientHeight are CSS-scaled and cause misalignment
+    overlay.width = img.naturalWidth;
+    overlay.height = img.naturalHeight;
+    
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+  }
+}
+
+runBtn.addEventListener('click', async () => {
+  const fd = new FormData();
+  fd.append('file', currentFile);
+  setScore('--', locales[currentLocale].analyzing, 'warn');
+  const res = await fetch(api + '/validate', { method: 'POST', body: fd });
+  const json = await res.json();
+  render(json);
+});
+
+function setScore(num, msg, cls) {
+  const badge = document.getElementById('badge');
+  badge.className = 'status ' + (cls === 'pass' ? 'pass' : cls === 'fail' ? 'fail' : 'warn');
+  badge.textContent = cls.toUpperCase();
+  document.getElementById('num').textContent = num;
+  document.getElementById('msg').textContent = msg;
+}
+
+function render(j) {
+  lastResult = j; // Store for hints toggle
+  const msg = j.status === 'pass' ? locales[currentLocale].photoMeets :
+              j.status === 'warning' ? locales[currentLocale].minorIssues :
+              locales[currentLocale].doesNotMeet;
+  setScore(j.overall_score, msg, j.status);
+  fill('tech', j.technical);
+  
+  // Separate biometric from tampering detection results
+  const bioItems = j.biometric.filter(p => !p.name.includes('Error Level') && !p.name.includes('Metadata') && !p.name.includes('Noise') && !p.name.includes('Color Channel'));
+  const tamperItems = j.biometric.filter(p => p.name.includes('Error Level') || p.name.includes('Metadata') || p.name.includes('Noise') || p.name.includes('Color Channel'));
+  
+  fill('bio', bioItems);
+  fill('tamper', tamperItems);
+  
+  // ✅ HYBRID: Extract auto-detected faceBox and store normalized coordinates
+  const headHeight = bioItems.find(p => p.name === 'Head Height' && p.faceBox);
+  if (headHeight && headHeight.faceBox) {
+    const fb = headHeight.faceBox;
+    if (fb.image_height && fb.image_height > 0) {
+      // Convert absolute pixels to normalized coordinates (0-1)
+      autoLines.top = fb.top / fb.image_height;
+      autoLines.eye = fb.eyeY / fb.image_height;
+      autoLines.chin = fb.bottom / fb.image_height;
+      
+      // Only update current lines if not in manual mode
+      if (!manualMode || fb.method !== 'manual') {
+        lines.top = autoLines.top;
+        lines.eye = autoLines.eye;
+        lines.chin = autoLines.chin;
+      }
+      
+      // Show manual adjustment button
+      document.getElementById('toggleManual').style.display = 'inline-block';
+    }
+  }
+  
+  drawOverlay(j);
+}
+
+function pill(s) {
+  return '<span class="status ' + (s === 'pass' ? 'pass' : s === 'warning' ? 'warn' : 'fail') + '">' + s.toUpperCase() + '</span>';
+}
+
+function fill(id, items) {
+  const el = document.getElementById(id);
+  el.innerHTML = items.map(p => `
+    <div class="param ${p.status}">
+      <div class="row"><b>${p.name}</b>${pill(p.status)}</div>
+      <div style="color:var(--text-secondary);margin-top:4px">
+        ${p.value ? '<b>' + locales[currentLocale].current + '</b> ' + p.value + ' ' : ''}
+        ${p.expected ? '<b>' + locales[currentLocale].required + '</b> ' + p.expected : ''}
+      </div>
+      ${p.recommendation ? `<p class='rec'>${p.recommendation}</p>` : ''}
+      ${p.how_to_fix ? `<p class='fix'><b>What to do:</b> ${p.how_to_fix}</p>` : ''}
+    </div>
+  `).join('');
+}
+
+let lastResult = null;
+
+function drawOverlay(j){
+  const show = document.getElementById('showHints').checked;
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  
+  if (!show) {
+    return;
+  }
+  
+  // ✅ HYBRID: Draw lines using normalized coordinates for pixel-perfect alignment
+  const guides = [
+    { key: 'top', y: lines.top, label: 'Top of Head', color: '#22c55e', dash: [5, 5] },
+    { key: 'eye', y: lines.eye, label: 'Eye Level (56-69%)', color: '#3b82f6', dash: [3, 3] },
+    { key: 'chin', y: lines.chin, label: 'Chin Line', color: '#ef4444', dash: [5, 5] }
+  ];
+  
+  guides.forEach(g => {
+    const y = g.y * overlay.height;
+    
+    // Draw line
+    ctx.strokeStyle = g.color;
+    ctx.lineWidth = manualMode ? 4 : 3;
+    ctx.setLineDash(g.dash);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(overlay.width, y);
+    ctx.stroke();
+    
+    // Draw center dot
+    ctx.fillStyle = g.color;
+    ctx.beginPath();
+    ctx.arc(overlay.width / 2, y, manualMode ? 8 : 5, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Draw label with background
+    ctx.fillStyle = g.color + 'CC';
+    ctx.font = 'bold 13px sans-serif';
+    const metrics = ctx.measureText(g.label);
+    ctx.fillRect(8, y - 20, metrics.width + 8, 16);
+    
+    ctx.fillStyle = '#fff';
+    ctx.fillText(g.label, 12, y - 7);
+    
+    // Draw drag handle in manual mode
+    if (manualMode) {
+      ctx.fillStyle = g.color;
+      ctx.fillRect(overlay.width - 40, y - 3, 30, 6);
+    }
+  });
+  
+  // Center guidelines
+  ctx.setLineDash([2, 2]); 
+  ctx.strokeStyle = 'rgba(156, 163, 175, .6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); 
+  ctx.moveTo(overlay.width / 2, 0); 
+  ctx.lineTo(overlay.width / 2, overlay.height); 
+  ctx.stroke();
+  ctx.beginPath(); 
+  ctx.moveTo(0, overlay.height / 2); 
+  ctx.lineTo(overlay.width, overlay.height / 2); 
+  ctx.stroke();
+}
+
+// ✅ HYBRID MODE: Manual line adjustment with drag
+function nearestLine(yNorm) {
+  const keys = ['top', 'eye', 'chin'];
+  return keys.reduce((a, b) => 
+    Math.abs(lines[a] - yNorm) < Math.abs(lines[b] - yNorm) ? a : b
+  );
+}
+
+overlay.addEventListener('mousedown', e => {
+  if (!manualMode) return;
+  const rect = overlay.getBoundingClientRect();
+  const yNorm = (e.clientY - rect.top) / overlay.height;
+  const key = nearestLine(yNorm);
+  if (Math.abs(lines[key] - yNorm) < 0.05) {
+    dragging.key = key;
+    overlay.style.cursor = 'ns-resize';
+  }
+});
+
+overlay.addEventListener('mousemove', e => {
+  if (!manualMode) {
+    overlay.style.cursor = 'default';
+    return;
+  }
+  
+  if (dragging.key) {
+    const rect = overlay.getBoundingClientRect();
+    const yNorm = Math.max(0, Math.min(1, (e.clientY - rect.top) / overlay.height));
+    lines[dragging.key] = yNorm;
+    drawOverlay(lastResult);
+  } else {
+    // Show cursor hint when near a line
+    const rect = overlay.getBoundingClientRect();
+    const yNorm = (e.clientY - rect.top) / overlay.height;
+    const key = nearestLine(yNorm);
+    overlay.style.cursor = Math.abs(lines[key] - yNorm) < 0.05 ? 'ns-resize' : 'default';
+  }
+});
+
+overlay.addEventListener('mouseup', () => {
+  dragging.key = null;
+  overlay.style.cursor = manualMode ? 'default' : 'default';
+});
+
+overlay.addEventListener('mouseleave', () => {
+  dragging.key = null;
+  overlay.style.cursor = 'default';
+});
+
+// Button handlers
+document.getElementById('toggleManual').onclick = () => {
+  manualMode = !manualMode;
+  const btn = document.getElementById('toggleManual');
+  const saveBtn = document.getElementById('saveManual');
+  const resetBtn = document.getElementById('resetManual');
+  
+  if (manualMode) {
+    btn.textContent = '✓ Manual Mode';
+    btn.style.background = '#3b82f6';
+    saveBtn.style.display = 'inline-block';
+    resetBtn.style.display = 'inline-block';
+    overlay.style.cursor = 'default';
+  } else {
+    btn.textContent = '✏️ Adjust Lines';
+    btn.style.background = '';
+    saveBtn.style.display = 'none';
+    resetBtn.style.display = 'none';
+    overlay.style.cursor = 'default';
+  }
+  
+  drawOverlay(lastResult);
+};
+
+document.getElementById('resetManual').onclick = () => {
+  // Reset to auto-detected lines
+  lines.top = autoLines.top;
+  lines.eye = autoLines.eye;
+  lines.chin = autoLines.chin;
+  drawOverlay(lastResult);
+};
+
+document.getElementById('saveManual').onclick = async () => {
+  if (!currentFile) return;
+  
+  // Send manual overrides to backend
+  const fd = new FormData();
+  fd.append('file', currentFile);
+  fd.append('overrides', JSON.stringify({
+    top: lines.top,
+    eye: lines.eye,
+    chin: lines.chin
+  }));
+  
+  setScore('--', locales[currentLocale].analyzing, 'warn');
+  const res = await fetch(api + '/validate', { method: 'POST', body: fd });
+  const json = await res.json();
+  render(json);
+};
+</script>
+</body>
+</html>
+
