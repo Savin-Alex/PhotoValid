@@ -49,7 +49,10 @@ services:
 
 ### Python Version Fix
 - **Issue**: MediaPipe doesn't support Python 3.13 yet
-- **Solution**: Using Python 3.11 with MediaPipe 0.10.14 (compatible version)
+- **Solution**: Using `runtime.txt` to specify Python 3.11.9 with MediaPipe 0.10.14
+- **Files**: 
+  - `runtime.txt`: `python-3.11.9`
+  - `requirements.txt`: `mediapipe==0.10.14`
 - **Result**: All dependencies install successfully
 
 ### Post-Deployment URLs
