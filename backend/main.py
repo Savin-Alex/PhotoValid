@@ -38,6 +38,7 @@ async def validate(file: UploadFile = File(...), overrides: Optional[str] = Form
     pil = Image.open(io.BytesIO(raw)).convert("RGB")
     bgr = pil_to_cv(pil)
 
+    # Full validation with MediaPipe/OpenCV (Python 3.11)
     tech_results = TechValidator(pil, raw, file.content_type).run()
     bio_results = BioValidator(bgr).run()
     tamper_results = TamperValidator(pil).run()
