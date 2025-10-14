@@ -45,7 +45,7 @@ vercel dev
 
 ## API Endpoints
 
-- `POST /api/validate` - Photo validation endpoint
+- `POST /validate` - Photo validation endpoint
 - All other routes serve the frontend SPA
 
 ## File Structure for Vercel
@@ -53,13 +53,35 @@ vercel dev
 ```
 /
 ├── vercel.json          # Vercel configuration
+├── requirements.txt     # Python dependencies (root level)
 ├── backend/
 │   ├── main.py         # FastAPI app (entry point)
-│   ├── requirements.txt # Python dependencies
 │   └── validators/     # Validation modules
 └── frontend/
     └── index.html      # Static frontend
 ```
+
+## Key Fixes Applied
+
+### ✅ Routing Configuration
+- **Problem**: Vercel routes `/api/validate` but FastAPI expects `/validate`
+- **Solution**: Updated `vercel.json` to route `/validate` directly to backend
+- **Result**: Clean URLs without `/api/` prefix
+
+### ✅ Python Module Paths
+- **Problem**: `validators` module not found in Vercel environment
+- **Solution**: Added `sys.path.append()` in `main.py` to include local modules
+- **Result**: All imports work correctly in serverless environment
+
+### ✅ Requirements.txt Location
+- **Problem**: Vercel only reads root-level `requirements.txt`
+- **Solution**: Copied `backend/requirements.txt` to project root
+- **Result**: Dependencies install correctly during build
+
+### ✅ CORS Configuration
+- **Problem**: Wildcard CORS (`*`) not suitable for production
+- **Solution**: Specific origins for local dev + Vercel deployments
+- **Result**: Secure CORS with proper domain restrictions
 
 ## Troubleshooting
 
@@ -69,7 +91,7 @@ If you hit the 250MB serverless function limit:
 - Or switch to a VPS/container deployment
 
 ### CORS Issues
-The backend is configured with permissive CORS for public API usage.
+The backend is configured with specific CORS origins for security.
 
 ### Build Failures
 Check Vercel build logs for:

@@ -7,6 +7,11 @@ from typing import Optional
 import io
 import json
 import numpy as np
+import sys
+import os
+
+# Fix Python path for Vercel deployment
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 from validators.utils import load_image_bytes, pil_to_cv
 from validators.tech import TechValidator
@@ -15,11 +20,19 @@ from validators.tamper import TamperValidator
 
 app = FastAPI(title="DV Photo Validator API", version="0.1.0")
 
+# CORS configuration for both local dev and production
+allowed_origins = [
+    "http://localhost:5173",  # Local frontend dev server
+    "http://127.0.0.1:5173",  # Local frontend dev server
+    "https://*.vercel.app",    # Vercel deployments
+    "https://dvphoto.vercel.app",  # Specific production domain
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
