@@ -90,7 +90,18 @@ class TechValidator:
             edges = gray.filter(ImageFilter.FIND_EDGES)
             edge_array = np.array(edges)
             sharp_norm = np.var(edge_array) / (np.mean(edge_array) + 1)
-        edge_density = np.count_nonzero(edges) / edges.size * 100
+            edges = edge_array  # Make sure edges is numpy array for consistency
+        
+        # Ensure we have proper scalar values
+        if hasattr(edges, 'size'):
+            edge_density = np.count_nonzero(edges) / edges.size * 100
+        else:
+            edge_density = 50  # fallback value
+        
+        # Ensure sharp_norm is a scalar
+        if hasattr(sharp_norm, 'item'):
+            sharp_norm = sharp_norm.item()
+        
         score = 0.6 * min(sharp_norm / 10, 100) + 0.4 * edge_density
         
         # ✅ FIXED: Adjust threshold - warn at 40+ instead of fail
