@@ -11,7 +11,9 @@ import sys
 import os
 
 # Fix Python path for Vercel deployment
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+current_dir = os.path.dirname(__file__)
+sys.path.append(current_dir)  # so 'validators' folder is included
+sys.path.append(os.path.join(current_dir, "validators"))  # in case needed
 
 from validators.utils import load_image_bytes, pil_to_cv
 from validators.tech import TechValidator
