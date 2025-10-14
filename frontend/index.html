@@ -485,15 +485,18 @@ function renderRows(items){
   rows.innerHTML = items.map(p=>{
     const cls = p.status==='pass'?'pass':(p.status==='warning'?'warn':'fail');
     
+    // ✅ FIX: Get parameter name (backend uses 'parameter', frontend expects 'name')
+    const paramName = p.parameter || p.name || 'Unknown';
+    
     // ✅ Translate parameter name
-    const label = I18N[LANG][p.name] || p.name;
+    const label = I18N[LANG][paramName] || paramName;
     
     const cur = p.value ?? '—';
     const exp = p.expected ?? '—';
     
     // ✅ FIX: Use translated recommendations and fixes
-    const recKey = 'rec_' + p.name.replace(/\s/g, '');
-    const fixKey = 'fix_' + p.name.replace(/\s/g, '');
+    const recKey = 'rec_' + paramName.replace(/\s/g, '');
+    const fixKey = 'fix_' + paramName.replace(/\s/g, '');
     
     const rec = I18N[LANG][recKey] ? 
       `<div class="rec">${I18N[LANG][recKey]}</div>` : 
@@ -587,7 +590,7 @@ validateBtn.addEventListener('click', async()=>{
     lastValidationResult = j;
     
     // Update lines from faceBox if provided
-    const hh = (j.biometric||[]).find(p=>p.name==='Head Height' && p.faceBox);
+    const hh = (j.biometric||[]).find(p=>(p.parameter||p.name)==='Head Height' && p.faceBox);
     if(hh && hh.faceBox && img.naturalHeight){
       lines.top = hh.faceBox.top / img.naturalHeight;
       lines.eye = hh.faceBox.eyeY / img.naturalHeight;
@@ -639,7 +642,7 @@ document.getElementById('saveManualBtn').addEventListener('click',()=>{
 document.getElementById('resetManualBtn').addEventListener('click',()=>{
   // Reset to last auto-detected values
   if(lastValidationResult){
-    const hh = (lastValidationResult.biometric||[]).find(p=>p.name==='Head Height' && p.faceBox);
+    const hh = (lastValidationResult.biometric||[]).find(p=>(p.parameter||p.name)==='Head Height' && p.faceBox);
     if(hh && hh.faceBox && img.naturalHeight){
       lines.top = hh.faceBox.top / img.naturalHeight;
       lines.eye = hh.faceBox.eyeY / img.naturalHeight;
