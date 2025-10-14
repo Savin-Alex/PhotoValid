@@ -4,11 +4,16 @@ services:
     env: python
     plan: free
     region: frankfurt
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port 10000
+    buildCommand: |
+      python3.11 --version || echo "Python 3.11 not available, trying to install..."
+      pip3.11 install -r backend/requirements.txt || pip install -r backend/requirements.txt
+    startCommand: |
+      python3.11 -m uvicorn backend.main:app --host 0.0.0.0 --port 10000 || uvicorn backend.main:app --host 0.0.0.0 --port 10000
     autoDeploy: true
     envVars:
       - key: PORT
         value: 10000
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: PYTHONPATH
+        value: /opt/render/project/src

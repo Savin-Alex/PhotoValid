@@ -50,23 +50,11 @@ def contrast(arr: np.ndarray) -> float:
     return float(c)
 
 def sharpness_laplacian(arr: np.ndarray) -> float:
-    try:
-        import cv2
-        gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY) if arr.ndim==3 else arr
-        val = cv2.Laplacian(gray, cv2.CV_64F).var()
-        # map to 0..100 roughly
-        return float(np.clip(val/10.0, 0, 100))
-    except ImportError:
-        # Fallback: simple variance-based sharpness estimation
-        if arr.ndim == 3:
-            gray = np.mean(arr, axis=2)
-        else:
-            gray = arr
-        # Simple edge detection using gradient variance
-        grad_x = np.abs(np.diff(gray, axis=1))
-        grad_y = np.abs(np.diff(gray, axis=0))
-        val = np.var(grad_x) + np.var(grad_y)
-        return float(np.clip(val/100.0, 0, 100))
+    import cv2
+    gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY) if arr.ndim==3 else arr
+    val = cv2.Laplacian(gray, cv2.CV_64F).var()
+    # map to 0..100 roughly
+    return float(np.clip(val/10.0, 0, 100))
 
 def exif_capture_datetime(img: Image.Image) -> dt.datetime | None:
     try:
