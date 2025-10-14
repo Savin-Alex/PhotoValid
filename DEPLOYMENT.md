@@ -38,6 +38,7 @@ services:
     env: python
     plan: free
     region: frankfurt
+    runtime: python-3.11
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port 10000
     autoDeploy: true
@@ -45,6 +46,11 @@ services:
       - key: PORT
         value: 10000
 ```
+
+### Python Version Fix
+- **Issue**: MediaPipe doesn't support Python 3.13 yet
+- **Solution**: Using Python 3.11 with MediaPipe 0.10.14 (compatible version)
+- **Result**: All dependencies install successfully
 
 ### Post-Deployment URLs
 - **Frontend**: `https://photo-valid.onrender.com`
