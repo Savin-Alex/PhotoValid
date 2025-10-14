@@ -71,12 +71,25 @@ class TechValidator:
         return out
 
     def sharpness(self) -> Dict[str,Any]:
-        import cv2
-        gray = cv2.cvtColor(self.arr, cv2.COLOR_BGR2GRAY)
-        lap_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-        brightness = gray.mean() + 1
-        sharp_norm = lap_var / brightness
-        edges = cv2.Canny(gray, 50, 150)
+        # Simplified sharpness check without OpenCV (Python 3.13 compatible)
+        try:
+            import cv2
+            # If OpenCV is available, use it
+            gray = cv2.cvtColor(self.arr, cv2.COLOR_BGR2GRAY)
+            lap_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            brightness = gray.mean() + 1
+            sharp_norm = lap_var / brightness
+            edges = cv2.Canny(gray, 50, 150)
+        except ImportError:
+            # Fallback: basic sharpness estimation using PIL
+            from PIL import Image, ImageFilter
+            pil_img = Image.fromarray(self.arr)
+            gray = pil_img.convert('L')
+            
+            # Simple edge detection using PIL's built-in filters
+            edges = gray.filter(ImageFilter.FIND_EDGES)
+            edge_array = np.array(edges)
+            sharp_norm = np.var(edge_array) / (np.mean(edge_array) + 1)
         edge_density = np.count_nonzero(edges) / edges.size * 100
         score = 0.6 * min(sharp_norm / 10, 100) + 0.4 * edge_density
         
