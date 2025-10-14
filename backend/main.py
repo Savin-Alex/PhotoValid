@@ -1,93 +1,61 @@
 from __future__ import annotations
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image
 from typing import Optional
 import io
+import os
+import sys
 import json
 import numpy as np
-import sys
-import os
 
-# Fix Python path for Vercel deployment
-current_dir = os.path.dirname(__file__)
-sys.path.append(current_dir)  # so 'validators' folder is included
-sys.path.append(os.path.join(current_dir, "validators"))  # in case needed
+# --- Ensure internal imports work ---
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 
 from validators.utils import load_image_bytes, pil_to_cv
 from validators.tech import TechValidator
 from validators.bio import BioValidator
 from validators.tamper import TamperValidator
 
-app = FastAPI(title="DV Photo Validator API", version="0.1.0")
+# --- FastAPI App ---
+app = FastAPI(title="DV Photo Validator", version="0.1.0")
 
-# CORS configuration for both local dev and production
-allowed_origins = [
-    "http://localhost:5173",  # Local frontend dev server
-    "http://127.0.0.1:5173",  # Local frontend dev server
-    "https://*.vercel.app",    # Vercel deployments
-    "https://dvphoto.vercel.app",  # Specific production domain
-]
-
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],  # you can restrict to your domain later
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class ValidationResponse(BaseModel):
-    status: str
-    overall_score: int
-    technical: list[dict]
-    biometric: list[dict]
-    recommendations: list[str]
-
-@app.post("/validate", response_model=ValidationResponse)
-async def validate(
-    file: UploadFile = File(...),
-    overrides: Optional[str] = Form(None)  # ✅ HYBRID: JSON {"top":0.18,"eye":0.58,"chin":0.86}
-):
+# --- API Endpoints ---
+@app.post("/api/validate")
+async def validate(file: UploadFile = File(...), overrides: Optional[str] = Form(None)):
     raw = await file.read()
-    pil = load_image_bytes(raw)
-    
-    # Technical validation
-    tech = TechValidator(pil, raw, file.content_type)
-    technical = tech.run()
-
-    # ✅ HYBRID: Parse manual overrides if provided
-    manual = None
-    if overrides:
-        try:
-            manual = json.loads(overrides)
-        except Exception:
-            manual = None  # Invalid JSON - ignore and use auto
-
-    # Biometric validation (with optional manual overrides)
+    pil = Image.open(io.BytesIO(raw)).convert("RGB")
     bgr = pil_to_cv(pil)
-    bio = BioValidator(bgr)
-    biometric = bio.run(manual_overrides=manual)
-    
-    # Tampering detection
-    tamper = TamperValidator(pil).run()
 
-    all_params = technical + biometric + tamper
-    passed = sum(1 for p in all_params if p.get('status') == 'pass')
-    overall = round(passed/len(all_params)*100) if all_params else 0
-    status = 'pass' if overall >= 80 else ('warning' if overall >= 60 else 'fail')
-    recs = [p.get('recommendation') for p in all_params if p.get('status')!='pass' and p.get('recommendation')]
+    tech_results = TechValidator(pil, raw, file.content_type).run()
+    bio_results = BioValidator(bgr).run()
+    tamper_results = TamperValidator(pil).run()
 
-    return ValidationResponse(
-        status=status,
-        overall_score=overall,
-        technical=technical,
-        biometric=biometric+tamper,
-        recommendations=recs + ['Automated tampering detection is an estimate only — not proof of editing.'],
-    )
+    all_results = tech_results + bio_results + tamper_results
+    passed = sum(1 for r in all_results if r["status"] == "pass")
+    overall = round(passed / len(all_results) * 100)
+    status = "pass" if overall >= 80 else ("warning" if overall >= 60 else "fail")
 
-@app.get("/")
-async def root():
-    return {"message": "DV Validator API up"}
+    return {
+        "status": status,
+        "overall_score": overall,
+        "technical": tech_results,
+        "biometric": bio_results,
+        "tamper": tamper_results,
+    }
 
+# --- Serve Frontend ---
+frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
+if os.path.isdir(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

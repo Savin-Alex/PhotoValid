@@ -1,100 +1,84 @@
-# Vercel Deployment Guide
+# Render Deployment Guide - PhotoValid
 
-## Quick Deploy to Vercel
+## 🚀 One-Click Deployment to Render
 
-### 1. Prerequisites
-- GitHub repository pushed to GitHub
-- Vercel account (free tier works)
-
-### 2. Vercel Project Setup
-1. Go to [vercel.com](https://vercel.com)
-2. Click "New Project"
-3. Import your GitHub repository
-4. Configure project:
-   - **Framework Preset**: Other
-   - **Root Directory**: `/` (project root)
-   - **Build Command**: (leave blank)
-   - **Output Directory**: (leave blank)
-
-### 3. Deployment Configuration
-The `vercel.json` file is already configured:
-- Frontend served from `/frontend/` as static files
-- API routes (`/api/*`) forwarded to FastAPI backend
-- Automatic routing for single-page app
-
-### 4. Environment Variables (if needed)
-If you need any environment variables, add them in Vercel dashboard:
-- Project Settings → Environment Variables
-
-### 5. Deploy
-- Click "Deploy" in Vercel dashboard
-- Wait for build to complete
-- Your app will be available at `https://your-project.vercel.app`
-
-## Local Testing
-
-To test the deployment configuration locally:
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Test locally
-vercel dev
+### Repository Structure
 ```
-
-## API Endpoints
-
-- `POST /validate` - Photo validation endpoint
-- All other routes serve the frontend SPA
-
-## File Structure for Vercel
-
-```
-/
-├── vercel.json          # Vercel configuration
-├── requirements.txt     # Python dependencies (root level)
+PhotoValid/
+├── render.yaml              # Render configuration
 ├── backend/
-│   ├── main.py         # FastAPI app (entry point)
-│   └── validators/     # Validation modules
+│   ├── main.py             # FastAPI app with static serving
+│   ├── requirements.txt    # Python dependencies
+│   └── validators/         # Validation modules
 └── frontend/
-    └── index.html      # Static frontend
+    └── index.html          # Static frontend
 ```
 
-## Key Fixes Applied
+### Deployment Steps
 
-### ✅ Routing Configuration
-- **Problem**: Vercel routes `/api/validate` but FastAPI expects `/validate`
-- **Solution**: Updated `vercel.json` to route `/validate` directly to backend
-- **Result**: Clean URLs without `/api/` prefix
+1. **Push to GitHub** ✅ (All changes committed)
 
-### ✅ Python Module Paths
-- **Problem**: `validators` module not found in Vercel environment
-- **Solution**: Added `sys.path.append()` in `main.py` to include local modules
-- **Result**: All imports work correctly in serverless environment
+2. **Go to Render**: https://render.com
+   - Sign up/Login with GitHub
+   - Click "New +" → "Web Service"
 
-### ✅ Requirements.txt Location
-- **Problem**: Vercel only reads root-level `requirements.txt`
-- **Solution**: Copied `backend/requirements.txt` to project root
-- **Result**: Dependencies install correctly during build
+3. **Connect Repository**:
+   - Select `Savin-Alex/PhotoValid`
+   - Render auto-detects `render.yaml`
 
-### ✅ CORS Configuration
-- **Problem**: Wildcard CORS (`*`) not suitable for production
-- **Solution**: Specific origins for local dev + Vercel deployments
-- **Result**: Secure CORS with proper domain restrictions
+4. **Deploy**:
+   - Click "Create Web Service"
+   - Wait for build (5-10 minutes)
 
-## Troubleshooting
+### Configuration (render.yaml)
+```yaml
+services:
+  - type: web
+    name: photo-valid
+    env: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port 10000
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+```
 
-### MediaPipe/OpenCV Size Issues
-If you hit the 250MB serverless function limit:
-- Consider using lighter alternatives
-- Or switch to a VPS/container deployment
+### Post-Deployment URLs
+- **Frontend**: `https://photo-valid.onrender.com`
+- **API**: `https://photo-valid.onrender.com/api/validate`
+- **Health Check**: `https://photo-valid.onrender.com/api/validate` (GET)
 
-### CORS Issues
-The backend is configured with specific CORS origins for security.
+### Features Enabled
+- ✅ **Full MediaPipe face detection** (no size limits!)
+- ✅ **OpenCV image processing**
+- ✅ **Complete biometric validation**
+- ✅ **Tamper detection**
+- ✅ **Technical validations**
+- ✅ **Static frontend serving**
 
-### Build Failures
-Check Vercel build logs for:
-- Missing dependencies in requirements.txt
-- Import errors
-- Python version compatibility
+### Testing
+1. Visit homepage → UI loads
+2. Upload photo → hits `/api/validate`
+3. Manual API test:
+   ```bash
+   curl https://photo-valid.onrender.com/api/validate
+   # Should return: {"detail":"Method Not Allowed"}
+   ```
+
+### Optional: Domain Lockdown
+After deployment works, update CORS in `backend/main.py`:
+```python
+allow_origins=["https://photo-valid.onrender.com"]
+```
+
+### Performance Notes
+- **Free Tier**: 95% uptime, sleeps after 15min idle
+- **Paid Tier**: $7/month for always-on, better performance
+- **Build Time**: ~5-10 minutes (MediaPipe + OpenCV)
+
+---
+
+**Your DV Photo Validator is ready for production deployment!** 🎉

@@ -333,7 +333,7 @@ const lines = { top:.18, eye:.60, chin:.86 };
 // API base URL
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:8000'
-  : '';
+  : '/api';
 
 function syncOverlay(){
   const rect = img.getBoundingClientRect();
