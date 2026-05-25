@@ -1,10 +1,10 @@
 from __future__ import annotations
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple
 import io
 import logging
 import os
@@ -19,6 +19,7 @@ from validators.utils import json_param
 from validators.tech import TechValidator
 from validators.bio import BioValidator
 from validators.tamper import TamperValidator
+from report import build_report_pdf
 
 logger = logging.getLogger("photo_valid")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -149,23 +150,25 @@ def _parse_overrides(raw_overrides: Optional[str]) -> tuple[dict[str, float] | N
     return clean or None, []
 
 
-@app.post("/api/validate")
-async def validate(file: UploadFile = File(...), overrides: Optional[str] = Form(None)):
-    raw = await file.read()
-    warnings: list[str] = []
+def _validate_raw(
+    raw: bytes, content_type: Optional[str], overrides_raw: Optional[str]
+) -> Tuple[int, dict, Optional[Image.Image]]:
+    """Run the full validation. Returns (http_status, summary, pil_or_None).
 
+    Shared by /api/validate (JSON) and /api/report (PDF) so both agree exactly.
+    """
     if not raw:
-        body = _summarize_response([], [], [], errors=["Uploaded file is empty."])
-        return JSONResponse(status_code=400, content=body)
+        return 400, _summarize_response([], [], [], errors=["Uploaded file is empty."]), None
 
     if len(raw) > MAX_UPLOAD_BYTES:
-        body = _summarize_response(
-            [],
-            [],
-            [],
-            errors=[f"Uploaded file is larger than the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB safety limit."],
+        return (
+            413,
+            _summarize_response(
+                [], [], [],
+                errors=[f"Uploaded file is larger than the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB safety limit."],
+            ),
+            None,
         )
-        return JSONResponse(status_code=413, content=body)
 
     try:
         probe = Image.open(io.BytesIO(raw))
@@ -174,17 +177,15 @@ async def validate(file: UploadFile = File(...), overrides: Optional[str] = Form
         pil = load_image_bytes(raw).convert("RGB")
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         logger.warning("Rejected invalid image upload: %s", exc)
-        body = _summarize_response([], [], [], errors=["Uploaded file is not a valid supported image."])
-        return JSONResponse(status_code=400, content=body)
+        return 400, _summarize_response([], [], [], errors=["Uploaded file is not a valid supported image."]), None
 
-    manual_overrides, override_warnings = _parse_overrides(overrides)
-    warnings.extend(override_warnings)
+    manual_overrides, override_warnings = _parse_overrides(overrides_raw)
     bgr = pil_to_cv(pil)
 
     # Full validation with all features (PIL + OpenCV + MediaPipe).
     tech_results = _safe_validator(
         "Technical",
-        lambda: TechValidator(pil, raw, file.content_type or "", detected_format).run(),
+        lambda: TechValidator(pil, raw, content_type or "", detected_format).run(),
     )
     bio_results = _safe_validator(
         "Biometric",
@@ -195,7 +196,36 @@ async def validate(file: UploadFile = File(...), overrides: Optional[str] = Form
         lambda: TamperValidator(pil).run(),
     )
 
-    return _summarize_response(tech_results, bio_results, tamper_results, warnings=warnings)
+    summary = _summarize_response(tech_results, bio_results, tamper_results, warnings=override_warnings)
+    return 200, summary, pil
+
+
+@app.post("/api/validate")
+async def validate(file: UploadFile = File(...), overrides: Optional[str] = Form(None)):
+    raw = await file.read()
+    status_code, summary, _ = _validate_raw(raw, file.content_type, overrides)
+    return JSONResponse(status_code=status_code, content=summary)
+
+
+@app.post("/api/report")
+async def report(file: UploadFile = File(...), overrides: Optional[str] = Form(None)):
+    raw = await file.read()
+    status_code, summary, pil = _validate_raw(raw, file.content_type, overrides)
+    if status_code != 200 or pil is None:
+        return JSONResponse(status_code=status_code, content=summary)
+    try:
+        pdf = build_report_pdf(pil, summary)
+    except Exception:
+        logger.exception("PDF report generation failed")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "status": "fail", "errors": ["Could not generate the PDF report."]},
+        )
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="dv-photo-report.pdf"'},
+    )
 
 # --- Serve Frontend ---
 frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")

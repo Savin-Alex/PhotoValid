@@ -81,3 +81,25 @@ def test_validate_includes_compression_ratio_check():
     payload = response.json()
     names = [c.get("name") for c in payload["technical"]]
     assert "Compression Ratio" in names
+
+
+def test_report_returns_pdf():
+    response = client.post(
+        "/api/report",
+        files={"file": ("photo.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content[:5] == b"%PDF-"
+    assert len(response.content) > 1000  # a real document, not an empty stub
+
+
+def test_report_rejects_invalid_image():
+    response = client.post(
+        "/api/report",
+        files={"file": ("broken.jpg", b"not an image", "image/jpeg")},
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/json")

@@ -87,7 +87,16 @@
         <h1 data-i18n="app_title">DV Lottery Photo Validator</h1>
       </div>
       <div class="actions">
-        <button id="langToggle" class="btn">EN / RU</button>
+        <select id="langSelect" class="btn" aria-label="Language" style="padding:8px 10px">
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="uk">Українська</option>
+          <option value="uz">Oʻzbekcha</option>
+          <option value="ar">العربية</option>
+          <option value="fa">فارسی</option>
+        </select>
         <button id="darkToggle" class="btn ghost">🌓</button>
         <button id="newPhotoBtn" class="btn ghost" data-i18n="new_photo" style="display:none">New Photo</button>
         <button id="validateBtn" class="btn brand" data-i18n="validate_btn" disabled>Validate</button>
@@ -130,6 +139,8 @@
           </div>
         </div>
 
+        <button id="downloadPdfBtn" class="btn" style="display:none;width:100%;margin-bottom:10px" data-i18n="download_pdf">⬇ Download report (PDF)</button>
+
         <div class="results">
           <h3 data-i18n="checks_title">Validation Results</h3>
           <div class="rows" id="rows">
@@ -155,6 +166,7 @@ const I18N = {
     validate_btn:"Validate", show_hints:"Show alignment hints",
     manual_btn:"Adjust Lines", save_btn:"Save & Re‑check", reset_btn:"Reset",
     new_photo:"New Photo",
+    download_pdf:"⬇ Download report (PDF)", downloading:"Preparing PDF…",
     overall_quality:"Overall quality", checks_title:"Validation Results",
     no_results:"Upload and validate a photo to see results",
     disclaimer:"⚠️ This tool provides automated estimates based on DV Lottery guidelines. Always review your final photo before submission.",
@@ -231,6 +243,7 @@ const I18N = {
     validate_btn:"Проверить", show_hints:"Показывать подсказки выравнивания",
     manual_btn:"Подстроить линии", save_btn:"Сохранить и перепроверить", reset_btn:"Сбросить",
     new_photo:"Новое фото",
+    download_pdf:"⬇ Скачать отчёт (PDF)", downloading:"Готовим PDF…",
     overall_quality:"Общая оценка", checks_title:"Результаты проверки",
     no_results:"Загрузите и проверьте фото чтобы увидеть результаты",
     disclaimer:"⚠️ Этот инструмент выполняет автоматическую оценку по требованиям DV Lottery. Всегда проверяйте финальное фото перед отправкой.",
@@ -298,20 +311,166 @@ const I18N = {
     "fix_ColorChannelBalance":"Избегайте сильного редактирования цветов или фильтров.",
     "rec_CompressionRatio":"Степень сжатия должна быть не более 20:1.",
     "fix_CompressionRatio":"Пересохраните в JPEG с более высоким качеством (85–95%), сохраняя файл ≤ 240 КБ."
+  },
+  // NOTE: es/fr/uk are high-confidence translations. ar/fa/uz are machine-assisted
+  // and should get a native-speaker review before production. Detailed rec_/fix_
+  // guidance falls back to English for these languages (UI + check names localized).
+  es:{
+    app_title:"Validador de fotos para la Lotería DV",
+    upload_title:"Arrastra y suelta tu foto aquí", upload_subtitle:"o haz clic para elegir", upload_drop:"Suelta la foto aquí",
+    validate_btn:"Validar", show_hints:"Mostrar guías de alineación",
+    manual_btn:"Ajustar líneas", save_btn:"Guardar y revalidar", reset_btn:"Restablecer",
+    new_photo:"Nueva foto", download_pdf:"⬇ Descargar informe (PDF)", downloading:"Preparando PDF…",
+    overall_quality:"Calidad general", checks_title:"Resultados de la validación",
+    no_results:"Sube y valida una foto para ver los resultados",
+    disclaimer:"⚠️ Esta herramienta ofrece estimaciones automáticas según las pautas de la Lotería DV. Revisa siempre tu foto final antes de enviarla.",
+    validating:"Validando…",
+    line_top:"Parte superior de la cabeza", line_eye:"Nivel de los ojos (56–69%)", line_chin:"Línea del mentón",
+    Pass:"Cumple", Warning:"Advertencia", Fail:"No cumple",
+    "Photo Dimensions":"Dimensiones de la foto", "File Size":"Tamaño del archivo", "File Format":"Formato del archivo",
+    "Color Model":"Modelo de color", "Brightness":"Brillo", "Contrast":"Contraste", "Sharpness":"Nitidez",
+    "Photo Date":"Fecha de la foto", "Compression Ratio":"Relación de compresión",
+    "Head Height":"Altura de la cabeza", "Eye Level":"Nivel de los ojos", "Head Centering":"Centrado de la cabeza",
+    "Background":"Fondo", "Face Lighting":"Iluminación del rostro", "Red-Eye":"Ojos rojos",
+    "Glasses/Headphones":"Gafas/Auriculares", "Headgear":"Sombrero/Tocado", "Facial Expression":"Expresión facial",
+    "Eyes Open":"Ojos abiertos", "Gaze (Looking at Camera)":"Mirada (a la cámara)", "Head Tilt":"Inclinación de la cabeza",
+    "One Person Only":"Solo una persona", "Face Detection":"Detección de rostro",
+    "Error Level Analysis":"Análisis de nivel de error", "Metadata Consistency":"Consistencia de metadatos",
+    "Image Noise":"Ruido de la imagen", "Color Channel Balance":"Balance de canales de color"
+  },
+  fr:{
+    app_title:"Validateur de photo pour la loterie DV",
+    upload_title:"Glissez-déposez votre photo ici", upload_subtitle:"ou cliquez pour parcourir", upload_drop:"Déposez la photo ici",
+    validate_btn:"Valider", show_hints:"Afficher les repères d'alignement",
+    manual_btn:"Ajuster les lignes", save_btn:"Enregistrer et revérifier", reset_btn:"Réinitialiser",
+    new_photo:"Nouvelle photo", download_pdf:"⬇ Télécharger le rapport (PDF)", downloading:"Préparation du PDF…",
+    overall_quality:"Qualité globale", checks_title:"Résultats de la validation",
+    no_results:"Importez et validez une photo pour voir les résultats",
+    disclaimer:"⚠️ Cet outil fournit des estimations automatiques basées sur les directives de la loterie DV. Vérifiez toujours votre photo finale avant de l'envoyer.",
+    validating:"Validation…",
+    line_top:"Sommet de la tête", line_eye:"Niveau des yeux (56–69%)", line_chin:"Ligne du menton",
+    Pass:"Conforme", Warning:"Avertissement", Fail:"Non conforme",
+    "Photo Dimensions":"Dimensions de la photo", "File Size":"Taille du fichier", "File Format":"Format du fichier",
+    "Color Model":"Modèle de couleur", "Brightness":"Luminosité", "Contrast":"Contraste", "Sharpness":"Netteté",
+    "Photo Date":"Date de la photo", "Compression Ratio":"Taux de compression",
+    "Head Height":"Hauteur de la tête", "Eye Level":"Niveau des yeux", "Head Centering":"Centrage de la tête",
+    "Background":"Arrière-plan", "Face Lighting":"Éclairage du visage", "Red-Eye":"Yeux rouges",
+    "Glasses/Headphones":"Lunettes/Écouteurs", "Headgear":"Couvre-chef", "Facial Expression":"Expression du visage",
+    "Eyes Open":"Yeux ouverts", "Gaze (Looking at Camera)":"Regard (vers la caméra)", "Head Tilt":"Inclinaison de la tête",
+    "One Person Only":"Une seule personne", "Face Detection":"Détection du visage",
+    "Error Level Analysis":"Analyse du niveau d'erreur", "Metadata Consistency":"Cohérence des métadonnées",
+    "Image Noise":"Bruit de l'image", "Color Channel Balance":"Équilibre des canaux de couleur"
+  },
+  uk:{
+    app_title:"Перевірка фото для лотереї DV",
+    upload_title:"Перетягніть фото сюди", upload_subtitle:"або натисніть, щоб вибрати", upload_drop:"Відпустіть фото тут",
+    validate_btn:"Перевірити", show_hints:"Показувати напрямні вирівнювання",
+    manual_btn:"Налаштувати лінії", save_btn:"Зберегти та перевірити", reset_btn:"Скинути",
+    new_photo:"Нове фото", download_pdf:"⬇ Завантажити звіт (PDF)", downloading:"Готуємо PDF…",
+    overall_quality:"Загальна якість", checks_title:"Результати перевірки",
+    no_results:"Завантажте та перевірте фото, щоб побачити результати",
+    disclaimer:"⚠️ Цей інструмент надає автоматичну оцінку за вимогами лотереї DV. Завжди перевіряйте фінальне фото перед надсиланням.",
+    validating:"Перевірка…",
+    line_top:"Маківка голови", line_eye:"Рівень очей (56–69%)", line_chin:"Лінія підборіддя",
+    Pass:"Відповідає", Warning:"Попередження", Fail:"Не відповідає",
+    "Photo Dimensions":"Розміри фото", "File Size":"Розмір файлу", "File Format":"Формат файлу",
+    "Color Model":"Колірна модель", "Brightness":"Яскравість", "Contrast":"Контраст", "Sharpness":"Різкість",
+    "Photo Date":"Дата фото", "Compression Ratio":"Ступінь стиснення",
+    "Head Height":"Висота голови", "Eye Level":"Рівень очей", "Head Centering":"Центрування голови",
+    "Background":"Фон", "Face Lighting":"Освітлення обличчя", "Red-Eye":"Червоні очі",
+    "Glasses/Headphones":"Окуляри/Навушники", "Headgear":"Головний убір", "Facial Expression":"Вираз обличчя",
+    "Eyes Open":"Очі розплющені", "Gaze (Looking at Camera)":"Погляд (у камеру)", "Head Tilt":"Нахил голови",
+    "One Person Only":"Лише одна особа", "Face Detection":"Виявлення обличчя",
+    "Error Level Analysis":"Аналіз рівня помилок", "Metadata Consistency":"Узгодженість метаданих",
+    "Image Noise":"Шум зображення", "Color Channel Balance":"Баланс колірних каналів"
+  },
+  uz:{
+    app_title:"DV lotereyasi uchun foto tekshiruvchi",
+    upload_title:"Suratni shu yerga tashlang", upload_subtitle:"yoki tanlash uchun bosing", upload_drop:"Suratni shu yerga qoʻying",
+    validate_btn:"Tekshirish", show_hints:"Tekislash chiziqlarini koʻrsatish",
+    manual_btn:"Chiziqlarni sozlash", save_btn:"Saqlash va qayta tekshirish", reset_btn:"Tiklash",
+    new_photo:"Yangi surat", download_pdf:"⬇ Hisobotni yuklab olish (PDF)", downloading:"PDF tayyorlanmoqda…",
+    overall_quality:"Umumiy sifat", checks_title:"Tekshiruv natijalari",
+    no_results:"Natijalarni koʻrish uchun surat yuklang va tekshiring",
+    disclaimer:"⚠️ Ushbu vosita DV lotereyasi talablari asosida avtomatik baho beradi. Yuborishdan oldin yakuniy suratni doimo tekshiring.",
+    validating:"Tekshirilmoqda…",
+    line_top:"Bosh tepasi", line_eye:"Koʻz darajasi (56–69%)", line_chin:"Iyak chizigʻi",
+    Pass:"Mos", Warning:"Ogohlantirish", Fail:"Mos emas",
+    "Photo Dimensions":"Surat oʻlchami", "File Size":"Fayl hajmi", "File Format":"Fayl formati",
+    "Color Model":"Rang modeli", "Brightness":"Yorqinlik", "Contrast":"Kontrast", "Sharpness":"Aniqlik",
+    "Photo Date":"Surat sanasi", "Compression Ratio":"Siqish darajasi",
+    "Head Height":"Bosh balandligi", "Eye Level":"Koʻz darajasi", "Head Centering":"Boshni markazlash",
+    "Background":"Fon", "Face Lighting":"Yuz yoritilishi", "Red-Eye":"Qizil koʻz",
+    "Glasses/Headphones":"Koʻzoynak/Quloqchin", "Headgear":"Bosh kiyimi", "Facial Expression":"Yuz ifodasi",
+    "Eyes Open":"Koʻzlar ochiq", "Gaze (Looking at Camera)":"Nigoh (kameraga)", "Head Tilt":"Bosh egilishi",
+    "One Person Only":"Faqat bir kishi", "Face Detection":"Yuzni aniqlash",
+    "Error Level Analysis":"Xato darajasi tahlili", "Metadata Consistency":"Metama'lumotlar mosligi",
+    "Image Noise":"Tasvir shovqini", "Color Channel Balance":"Rang kanallari balansi"
+  },
+  ar:{
+    app_title:"أداة التحقق من صورة قرعة الهجرة DV",
+    upload_title:"اسحب صورتك وأفلتها هنا", upload_subtitle:"أو انقر للاختيار", upload_drop:"أفلت الصورة هنا",
+    validate_btn:"تحقق", show_hints:"إظهار خطوط المحاذاة",
+    manual_btn:"ضبط الخطوط", save_btn:"حفظ وإعادة التحقق", reset_btn:"إعادة تعيين",
+    new_photo:"صورة جديدة", download_pdf:"⬇ تنزيل التقرير (PDF)", downloading:"جارٍ تجهيز PDF…",
+    overall_quality:"الجودة العامة", checks_title:"نتائج التحقق",
+    no_results:"حمّل صورة وتحقق منها لعرض النتائج",
+    disclaimer:"⚠️ توفّر هذه الأداة تقديرات تلقائية وفقًا لإرشادات قرعة الهجرة DV. تحقّق دائمًا من صورتك النهائية قبل الإرسال.",
+    validating:"جارٍ التحقق…",
+    line_top:"أعلى الرأس", line_eye:"مستوى العينين (56–69%)", line_chin:"خط الذقن",
+    Pass:"مطابق", Warning:"تحذير", Fail:"غير مطابق",
+    "Photo Dimensions":"أبعاد الصورة", "File Size":"حجم الملف", "File Format":"صيغة الملف",
+    "Color Model":"نموذج الألوان", "Brightness":"السطوع", "Contrast":"التباين", "Sharpness":"الحدّة",
+    "Photo Date":"تاريخ الصورة", "Compression Ratio":"نسبة الضغط",
+    "Head Height":"ارتفاع الرأس", "Eye Level":"مستوى العينين", "Head Centering":"توسيط الرأس",
+    "Background":"الخلفية", "Face Lighting":"إضاءة الوجه", "Red-Eye":"احمرار العينين",
+    "Glasses/Headphones":"النظارات/السماعات", "Headgear":"غطاء الرأس", "Facial Expression":"تعبير الوجه",
+    "Eyes Open":"العينان مفتوحتان", "Gaze (Looking at Camera)":"النظر (إلى الكاميرا)", "Head Tilt":"إمالة الرأس",
+    "One Person Only":"شخص واحد فقط", "Face Detection":"اكتشاف الوجه",
+    "Error Level Analysis":"تحليل مستوى الخطأ", "Metadata Consistency":"اتساق البيانات الوصفية",
+    "Image Noise":"تشويش الصورة", "Color Channel Balance":"توازن قنوات الألوان"
+  },
+  fa:{
+    app_title:"اعتبارسنجی عکس قرعه‌کشی DV",
+    upload_title:"عکس خود را اینجا بکشید و رها کنید", upload_subtitle:"یا برای انتخاب کلیک کنید", upload_drop:"عکس را اینجا رها کنید",
+    validate_btn:"بررسی", show_hints:"نمایش خطوط تراز",
+    manual_btn:"تنظیم خطوط", save_btn:"ذخیره و بررسی مجدد", reset_btn:"بازنشانی",
+    new_photo:"عکس جدید", download_pdf:"⬇ دانلود گزارش (PDF)", downloading:"در حال آماده‌سازی PDF…",
+    overall_quality:"کیفیت کلی", checks_title:"نتایج بررسی",
+    no_results:"برای دیدن نتایج، عکسی را بارگذاری و بررسی کنید",
+    disclaimer:"⚠️ این ابزار بر اساس دستورالعمل‌های قرعه‌کشی DV برآورد خودکار ارائه می‌دهد. همیشه پیش از ارسال، عکس نهایی را بررسی کنید.",
+    validating:"در حال بررسی…",
+    line_top:"بالای سر", line_eye:"سطح چشم (56–69%)", line_chin:"خط چانه",
+    Pass:"مطابق", Warning:"هشدار", Fail:"نامطابق",
+    "Photo Dimensions":"ابعاد عکس", "File Size":"حجم فایل", "File Format":"قالب فایل",
+    "Color Model":"مدل رنگ", "Brightness":"روشنایی", "Contrast":"کنتراست", "Sharpness":"وضوح",
+    "Photo Date":"تاریخ عکس", "Compression Ratio":"نسبت فشرده‌سازی",
+    "Head Height":"ارتفاع سر", "Eye Level":"سطح چشم", "Head Centering":"مرکزچینی سر",
+    "Background":"پس‌زمینه", "Face Lighting":"نور چهره", "Red-Eye":"قرمزی چشم",
+    "Glasses/Headphones":"عینک/هدفون", "Headgear":"پوشش سر", "Facial Expression":"حالت چهره",
+    "Eyes Open":"چشم‌ها باز", "Gaze (Looking at Camera)":"نگاه (به دوربین)", "Head Tilt":"کجی سر",
+    "One Person Only":"فقط یک نفر", "Face Detection":"تشخیص چهره",
+    "Error Level Analysis":"تحلیل سطح خطا", "Metadata Consistency":"سازگاری فراداده",
+    "Image Noise":"نویز تصویر", "Color Channel Balance":"توازن کانال‌های رنگ"
   }
 };
 
-let LANG = localStorage.getItem('lang') || (navigator.language.startsWith('ru') ? 'ru' : 'en');
+let LANG = localStorage.getItem('lang') || (navigator.language || 'en').slice(0,2).toLowerCase();
+if (!I18N[LANG]) LANG = 'en';  // fall back if stored/detected language isn't supported
 
 // ✅ FIX: Apply i18n and redraw overlay with translated labels
 function applyI18N(){
+  const dict = I18N[LANG] || I18N.en;
+  // Right-to-left layout for Arabic / Persian
+  document.documentElement.dir = (LANG === 'ar' || LANG === 'fa') ? 'rtl' : 'ltr';
+  document.documentElement.lang = LANG;
   document.querySelectorAll('[data-i18n]').forEach(el=>{
     const key = el.getAttribute('data-i18n');
-    if (I18N[LANG][key]) el.textContent = I18N[LANG][key];
+    if (dict[key]) el.textContent = dict[key];
   });
   document.querySelectorAll('[data-i18n-title]').forEach(el=>{
     const key = el.getAttribute('data-i18n-title');
-    if (I18N[LANG][key]) el.title = I18N[LANG][key];
+    if (dict[key]) el.title = dict[key];
   });
   // ✅ Redraw overlay with translated labels
   if(img.naturalHeight > 0) {
@@ -340,11 +499,12 @@ const meterVal = document.getElementById('meterVal');
 const showHints = document.getElementById('showHints');
 const validateBtn = document.getElementById('validateBtn');
 
-let manualMode = false; 
-let dragging = null; 
+let manualMode = false;
+let dragging = null;
 let currentFile = null;
 let lastValidationResult = null;
 let pendingManualOverrides = null;
+let lastUsedOverrides = null;
 
 // normalized positions (default)
 const lines = { top:.18, eye:.60, chin:.86 };
@@ -401,10 +561,11 @@ function drawOverlay(){
   if(!showHints.checked || !img.naturalHeight) return;
   
   const h = overlay.clientHeight, w = overlay.clientWidth;
+  const dict = I18N[LANG] || I18N.en;
   const guideData = [
-    {k:'top',  label:I18N[LANG].line_top},
-    {k:'eye',  label:I18N[LANG].line_eye},
-    {k:'chin', label:I18N[LANG].line_chin}
+    {k:'top',  label:dict.line_top},
+    {k:'eye',  label:dict.line_eye},
+    {k:'chin', label:dict.line_chin}
   ];
   
   guideData.forEach(g=>{
@@ -657,6 +818,7 @@ validateBtn.addEventListener('click', async()=>{
   try {
     const overrides = pendingManualOverrides || (manualMode ? currentManualOverrides() : undefined);
     pendingManualOverrides = null;
+    lastUsedOverrides = overrides || null;
     const j = await runValidate(currentFile, overrides);
     lastValidationResult = j;
     
@@ -676,6 +838,7 @@ validateBtn.addEventListener('click', async()=>{
     const items = [...(j.technical||[]), ...(j.biometric||[]), ...(j.tamper||[])];
     renderRows(items);
     drawOverlay();
+    document.getElementById('downloadPdfBtn').style.display = 'block';
     
     // ✅ UX Enhancement: Smooth scroll to results and highlight issues
     setTimeout(() => {
@@ -728,6 +891,33 @@ document.getElementById('resetManualBtn').addEventListener('click',()=>{
   }
 });
 
+// Download PDF report
+document.getElementById('downloadPdfBtn').addEventListener('click', async () => {
+  if(!currentFile) return;
+  const btn = document.getElementById('downloadPdfBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = I18N[LANG].downloading || 'Preparing PDF…';
+  try {
+    const fd = new FormData();
+    fd.append('file', currentFile);
+    if(lastUsedOverrides) fd.append('overrides', JSON.stringify(lastUsedOverrides));
+    const res = await fetch(`${API_BASE}/report`, {method:'POST', body:fd});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'dv-photo-report.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch(err) {
+    alert(`Could not generate PDF: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+});
+
 // Show hints toggle
 showHints.addEventListener('change', drawOverlay);
 
@@ -735,7 +925,9 @@ showHints.addEventListener('change', drawOverlay);
 document.getElementById('newPhotoBtn').addEventListener('click', () => {
   currentFile = null;
   lastValidationResult = null;
-  
+  lastUsedOverrides = null;
+  document.getElementById('downloadPdfBtn').style.display = 'none';
+
   // Reset image
   img.src = '';
   
@@ -763,14 +955,14 @@ document.getElementById('newPhotoBtn').addEventListener('click', () => {
   applyI18N();
 });
 
-// Language toggle
-document.getElementById('langToggle').addEventListener('click',()=>{ 
-  LANG = LANG==='en'?'ru':'en'; 
-  localStorage.setItem('lang', LANG); 
+// Language selector
+document.getElementById('langSelect').addEventListener('change', e=>{
+  LANG = I18N[e.target.value] ? e.target.value : 'en';
+  localStorage.setItem('lang', LANG);
   applyI18N();
-  
+
   // ✅ Re-render validation results if they exist (to translate labels)
-  if(lastValidationResult && lastValidationResult.technical) {
+  if(lastValidationResult) {
     const items = [...(lastValidationResult.technical||[]), ...(lastValidationResult.biometric||[]), ...(lastValidationResult.tamper||[])];
     renderRows(items);
   }
@@ -785,6 +977,7 @@ document.getElementById('darkToggle').addEventListener('click',()=>{
 });
 
 // Initial
+document.getElementById('langSelect').value = LANG;
 applyI18N();
 </script>
 </body>
