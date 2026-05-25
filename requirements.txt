@@ -1,9 +1,3 @@
-fastapi==0.115.2
-uvicorn[standard]==0.30.6
-python-multipart==0.0.9
-Pillow==10.4.0
-opencv-python-headless==4.10.0.84
-mediapipe==0.10.14
-numpy>=1.26.0
-piexif==1.1.3
-
+# Single source of truth for runtime dependencies lives in backend/requirements.txt.
+# This file exists only for tooling that expects a requirements.txt at the repo root.
+-r backend/requirements.txt

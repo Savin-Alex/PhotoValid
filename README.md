@@ -6,27 +6,31 @@ AI-powered photo validation system for U.S. Department of State Diversity Visa (
 
 ## ✨ Features
 
-### Technical Validations (8 parameters)
+### Technical Validations
 - ✅ Photo dimensions (600×600 to 1200×1200 px, square)
 - ✅ File size (≤ 240 KB)
+- ✅ Compression ratio (≤ 20:1)
 - ✅ File format (JPEG only)
-- ✅ Color model (sRGB, no grayscale)
+- ✅ Color model (24-bit color, sRGB; no grayscale)
 - ✅ Brightness & contrast analysis
-- ✅ Sharpness detection (Laplacian variance)
 - ✅ EXIF date validation (≤ 6 months old)
+- ✅ Image noise (flat-region noise floor)
 
-### Biometric & Composition Validations (17+ parameters)
+### Biometric & Composition Validations
 - ✅ Face detection (exactly one face)
 - ✅ Head height (50–69% of image height)
 - ✅ Eye level positioning (56–69% from bottom)
-- ✅ Head centering (horizontal & vertical)
-- ✅ Background uniformity (plain white/off-white)
+- ✅ Head centering (horizontal offset)
+- ✅ Background uniformity (plain white/off-white, sampled at the top corners)
+- ✅ Sharpness (face region, Laplacian variance)
 - ✅ Face lighting balance (left vs right)
-- ✅ Head tilt/rotation detection
-- ✅ Red-eye detection (heuristic)
-- ✅ Glasses/headphones detection (heuristic)
-- ✅ Headgear detection (heuristic)
-- ✅ Facial expression analysis (heuristic)
+- ✅ Eyes open (Eye Aspect Ratio)
+- ✅ Gaze / looking at camera (iris centering)
+- ✅ Neutral expression (mouth openness)
+- ✅ Head tilt (inter-eye line angle)
+- ⚠️ Glasses — best-effort heuristic; warns on likely eyeglasses (prohibited), never confidently clears
+- ⚠️ Red-eye — best-effort heuristic; warns on likely red-eye, never confidently clears
+- ⚠️ Headgear/hats — manual review (not auto-detected)
 
 ### Output
 - Overall compliance score (0–100%)
@@ -55,7 +59,7 @@ PhotoValid/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Python 3.12** (required for MediaPipe compatibility)
+- **Python 3.11 or 3.12** (MediaPipe supports both; Render deploys on 3.11.9 per `runtime.txt`)
 - pip package manager
 - (Optional) Homebrew on macOS for easy Python installation
 
@@ -149,20 +153,24 @@ http://localhost:5173
 
 ## 📡 API Endpoints
 
-### `POST /validate`
+### `POST /api/validate`
 
 Validates an uploaded photo against DV Lottery requirements.
 
 **Request:**
 - Method: `POST`
 - Content-Type: `multipart/form-data`
-- Body: Form data with file field containing JPEG image
+- Body: `file` field containing a JPEG image (optional `overrides` field: JSON string with `top`/`eye`/`chin` normalized 0–1 line positions)
 
 **Response:**
 ```json
 {
+  "ok": false,
   "status": "pass|warning|fail",
   "overall_score": 85,
+  "errors": [],
+  "warnings": [],
+  "manual_review": ["Red-Eye: Not auto-checked"],
   "technical": [
     {
       "name": "Photo Dimensions",
@@ -180,20 +188,16 @@ Validates an uploaded photo against DV Lottery requirements.
       "head_height_pct": 61.2
     }
   ],
-  "recommendations": []
+  "tamper": [],
+  "checks": []
 }
 ```
 
 ### `GET /`
 
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "message": "DV Validator API up"
-}
-```
+Serves the static frontend (single-page web interface) and returns `200` — use it as
+the liveness probe. There is no separate JSON health endpoint; `GET /api/validate`
+returns `404` because the catch-all static mount at `/` handles non-POST paths.
 
 ## 🔧 Technology Stack
 
@@ -225,9 +229,18 @@ Health check endpoint.
 ## 🔍 Validation Logic
 
 ### Scoring
-- **Pass (80–100%)**: Photo meets DV requirements
-- **Warning (60–79%)**: Minor issues, re-upload suggested
-- **Fail (0–59%)**: Does not meet requirements
+- **Overall score** = the percentage of *auto-run* checks that pass. Checks that
+  cannot be auto-verified (`skipped` / manual review) are excluded from the score.
+- **Status**:
+  - `fail` — a **critical** check failed (dimensions, file size, format, color model,
+    compression ratio, face detected, one person, head height, eye level) or the upload
+    was invalid.
+  - `warning` — only **advisory** checks failed or warned (e.g. brightness, sharpness,
+    centering, lighting, expression, gaze, head tilt, likely glasses).
+  - `pass` — no failures or warnings (a clean photo can still pass even though some
+    items, e.g. red-eye/headgear, are left for manual review).
+- Manual-review items are returned in a separate `manual_review` list so they don't
+  silently pass *or* block a clean result.
 
 ### Critical Failures
 The following parameters cause immediate rejection:

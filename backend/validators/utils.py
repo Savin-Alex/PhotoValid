@@ -10,8 +10,7 @@ RGB = Tuple[int, int, int]
 def load_image_bytes(b: bytes) -> Image.Image:
     """Load image from bytes and fix EXIF orientation."""
     img = Image.open(io.BytesIO(b))
-    if img.mode not in ("RGB", "L"):
-        img = img.convert("RGB")
+    original_format = img.format
     
     # ✅ FIX A: Correct EXIF orientation before detection
     # This ensures MediaPipe sees an upright face regardless of how the photo was taken
@@ -19,12 +18,14 @@ def load_image_bytes(b: bytes) -> Image.Image:
         img = ImageOps.exif_transpose(img)
     except Exception:
         pass  # No EXIF orientation data or error - continue with original
-    
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    img.format = original_format
     return img
 
 def pil_to_cv(img: Image.Image) -> np.ndarray:
     # Pillow RGB -> OpenCV BGR
-    return np.asarray(img)[:, :, ::-1].copy()
+    return np.asarray(img.convert("RGB"))[:, :, ::-1].copy()
 
 def is_grayscale(arr: np.ndarray) -> bool:
     if arr.ndim == 3 and arr.shape[2] == 3:
@@ -83,22 +84,54 @@ def center_distance_ratio(w: int, h: int, box: Tuple[int,int,int,int]) -> float:
     maxd = math.hypot(w/2, h/2)
     return float(dist/maxd)
 
+def _bool_scalar(value: Any) -> bool:
+    """Convert Python/NumPy scalar-like values to bool without ambiguous arrays."""
+    if isinstance(value, np.ndarray):
+        return bool(np.all(value)) if value.size else False
+    if isinstance(value, np.generic):
+        return bool(value.item())
+    return bool(value)
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
 def json_param(name: str, value: Any=None, expected: str|None=None,
                ok: bool|None=None, warn: bool=False, rec: str|None=None,
-               fix: str|None=None, extra: Dict[str, Any]|None=None):
-    if ok:
-        status = 'pass'
-    elif warn:
-        status = 'warning'
+               fix: str|None=None, extra: Dict[str, Any]|None=None,
+               status: str|None=None):
+    check_name = str(name or "Unknown Check")
+    if status:
+        normalized_status = status if status in {"pass", "warning", "fail", "skipped"} else "fail"
+    elif _bool_scalar(ok):
+        normalized_status = 'pass'
+    elif _bool_scalar(warn):
+        normalized_status = 'warning'
     else:
-        status = 'fail'
+        normalized_status = 'fail'
 
-    d = {"name": name, "value": value, "expected": expected, "status": status}
-    if rec and status != 'pass':
+    d = {
+        "name": check_name,
+        "parameter": check_name,
+        "value": _json_safe(value),
+        "expected": _json_safe(expected),
+        "status": normalized_status,
+        "ok": normalized_status == "pass",
+    }
+    if rec and normalized_status != 'pass':
         d["recommendation"] = rec
-    if fix and status != 'pass':
+    if fix and normalized_status != 'pass':
         d["how_to_fix"] = fix
     if extra:
-        d.update(extra)
+        d.update(_json_safe(extra))
     return d
 

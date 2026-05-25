@@ -5,14 +5,14 @@
 echo "🚀 Starting DV Photo Validator..."
 echo ""
 
-# Check if Python 3.12 is installed
-if ! command -v python3.12 &> /dev/null; then
-    echo "❌ Python 3.12 is not installed."
-    echo "📦 Install it with: brew install python@3.12"
+# Check if Python 3.11 is installed
+if ! command -v python3.11 &> /dev/null; then
+    echo "❌ Python 3.11 is not installed."
+    echo "📦 Install it with: brew install python@3.11"
     exit 1
 fi
 
-echo "✅ Python 3.12 found"
+echo "✅ Python 3.11 found"
 echo ""
 
 # Setup backend
@@ -20,7 +20,7 @@ cd backend
 
 if [ ! -d ".venv" ]; then
     echo "📦 Creating virtual environment..."
-    python3.12 -m venv .venv
+    python3.11 -m venv .venv
 fi
 
 echo "📦 Activating virtual environment..."
@@ -36,9 +36,8 @@ echo "✅ Backend ready!"
 echo "🌐 Starting FastAPI server on http://localhost:8000"
 echo ""
 echo "📋 Next steps:"
-echo "   1. Backend is starting now..."
-echo "   2. In another terminal, run: cd frontend && python -m http.server 5173"
-echo "   3. Open http://localhost:5173 in your browser"
+echo "   1. Backend is starting now (it also serves the frontend)..."
+echo "   2. Open http://localhost:8000 in your browser"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

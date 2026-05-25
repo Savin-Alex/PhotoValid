@@ -1,93 +1,58 @@
-# Render Deployment Guide - PhotoValid
+# Deploying PhotoValid on Render
 
-## 🚀 One-Click Deployment to Render
+The deployment is defined by [`render.yaml`](render.yaml) (Infrastructure-as-Code).
+**That file is the source of truth** — don't hand-copy its settings into docs, or
+they drift. This guide explains the surrounding context only.
 
-### Repository Structure
-```
-PhotoValid/
-├── render.yaml              # Render configuration
-├── backend/
-│   ├── main.py             # FastAPI app with static serving
-│   ├── requirements.txt    # Python dependencies
-│   └── validators/         # Validation modules
-└── frontend/
-    └── index.html          # Static frontend
-```
+## One-time setup
 
-### Deployment Steps
+1. Push the repo to GitHub.
+2. On https://render.com → **New + → Blueprint**, connect the repo. Render reads
+   `render.yaml` and creates the service automatically.
+3. Click **Apply**. First build takes ~5–10 min (MediaPipe + OpenCV wheels).
 
-1. **Push to GitHub** ✅ (All changes committed)
+## What `render.yaml` sets
 
-2. **Go to Render**: https://render.com
-   - Sign up/Login with GitHub
-   - Click "New +" → "Web Service"
+- **Runtime**: Python **3.11.9** (`PYTHON_VERSION` env var; also pinned in `runtime.txt`).
+  MediaPipe must be on a supported Python — do not let Render fall back to 3.13.
+- **Build**: `pip install -r backend/requirements.txt`
+- **Start**: `python -m uvicorn backend.main:app --host 0.0.0.0 --port 10000`
+- **PYTHONPATH** = repo root, so `backend.main` and the static `frontend/` resolve.
 
-3. **Connect Repository**:
-   - Select `Savin-Alex/PhotoValid`
-   - Render auto-detects `render.yaml`
+## After deploy
 
-4. **Deploy**:
-   - Click "Create Web Service"
-   - Wait for build (5-10 minutes)
+- **App (frontend + API)**: `https://<service>.onrender.com/`
+- **Validation endpoint**: `POST https://<service>.onrender.com/api/validate`
+- **Liveness probe**: `GET /` returns `200` (it serves the UI). There is no
+  separate JSON health endpoint; `GET /api/validate` returns `404` (the catch-all
+  static mount at `/` handles it), so use `GET /` for health checks.
 
-### Configuration (render.yaml)
-```yaml
-services:
-  - type: web
-    name: photo-valid
-    env: python
-    plan: free
-    region: frankfurt
-    runtime: python-3.11
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port 10000
-    autoDeploy: true
-    envVars:
-      - key: PORT
-        value: 10000
+```bash
+curl -I https://<service>.onrender.com           # GET / -> 200 (UI loads)
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://<service>.onrender.com/api/validate     # GET -> 404 (POST-only endpoint)
 ```
 
-### Python Version Fix
-- **Issue**: MediaPipe doesn't support Python 3.13 yet
-- **Solution**: Using `runtime.txt` to specify Python 3.11.9 with MediaPipe 0.10.14
-- **Files**: 
-  - `runtime.txt`: `python-3.11.9`
-  - `requirements.txt`: `mediapipe==0.10.14`
-- **Result**: All dependencies install successfully
+## Locking down CORS (optional)
 
-### Post-Deployment URLs
-- **Frontend**: `https://photo-valid.onrender.com`
-- **API**: `https://photo-valid.onrender.com/api/validate`
-- **Health Check**: `https://photo-valid.onrender.com/api/validate` (GET)
+The API is credential-free and defaults to `allow_origins=*`. To restrict it,
+set the `CORS_ORIGINS` env var (comma-separated) on the Render service, e.g.
+`CORS_ORIGINS=https://yourdomain.com`.
 
-### Features Enabled
-- ✅ **Full MediaPipe face detection** (no size limits!)
-- ✅ **OpenCV image processing**
-- ✅ **Complete biometric validation**
-- ✅ **Tamper detection**
-- ✅ **Technical validations**
-- ✅ **Static frontend serving**
+## Free-tier notes
 
-### Testing
-1. Visit homepage → UI loads
-2. Upload photo → hits `/api/validate`
-3. Manual API test:
-   ```bash
-   curl https://photo-valid.onrender.com/api/validate
-   # Should return: {"detail":"Method Not Allowed"}
-   ```
+| Resource | Free tier |
+|----------|-----------|
+| Uptime   | sleeps after ~15 min idle (cold start on next request) |
+| Memory   | 512 MB |
+| Build    | 500 min/month |
 
-### Optional: Domain Lockdown
-After deployment works, update CORS in `backend/main.py`:
-```python
-allow_origins=["https://photo-valid.onrender.com"]
-```
+For always-on / more memory, upgrade the service plan in Render.
 
-### Performance Notes
-- **Free Tier**: 95% uptime, sleeps after 15min idle
-- **Paid Tier**: $7/month for always-on, better performance
-- **Build Time**: ~5-10 minutes (MediaPipe + OpenCV)
+## Troubleshooting
 
----
-
-**Your DV Photo Validator is ready for production deployment!** 🎉
+- **Build fails on MediaPipe** → confirm Python resolved to 3.11.9 (check the build
+  log's `python --version`); MediaPipe has no wheels for 3.13.
+- **App won't start** → verify the start command targets `backend.main:app` and that
+  `PYTHONPATH` includes the repo root.
+- **Frontend 404** → ensure `frontend/index.html` exists; `backend/main.py` mounts it at `/`.
