@@ -340,11 +340,11 @@ Potential improvements for production:
 
 ## 📄 License
 
-This project is provided as-is for educational and commercial use.
+**Proprietary — All Rights Reserved.** Copyright © 2026 Alexander Savin.
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+This software and its source code are private and confidential. No permission is
+granted to use, copy, modify, distribute, sublicense, or sell any part of it
+without the prior written consent of the copyright holder. See [LICENSE](LICENSE).
 
 ## ⚠️ Disclaimer
 
