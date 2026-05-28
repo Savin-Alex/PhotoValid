@@ -69,8 +69,17 @@ def _summarize_response(
 ) -> dict:
     all_results = technical + biometric + tamper
 
-    # "skipped" = could not be auto-verified (manual review). These do NOT count
-    # toward the score and do NOT block a "pass" — they are surfaced separately.
+    # Stamp the response contract: every check carries a `critical` flag, and any
+    # skipped check carries a `skipped_reason` (so the UI/clients can reason about it).
+    for r in all_results:
+        r["critical"] = r.get("name") in CRITICAL_CHECKS
+        if r.get("status") == "skipped":
+            r.setdefault("skipped_reason", r.get("recommendation"))
+
+    # "skipped" = could not be auto-verified. These do NOT count toward the score.
+    # A NON-critical skip is harmless manual-review. A CRITICAL skip means a
+    # must-pass requirement could not be verified, so the result must NOT look like
+    # a clean pass (it forces at least a "warning").
     ran = [r for r in all_results if r.get("status") != "skipped"]
     passed = [r for r in ran if r.get("status") == "pass"]
     failed = [r for r in all_results if r.get("status") == "fail"]
@@ -85,12 +94,15 @@ def _summarize_response(
     response_errors = list(errors or [])
     response_warnings = list(warnings or [])
     for r in failed:
-        if r.get("name") in CRITICAL_CHECKS:
-            response_errors.append(_line(r))
-        else:
-            response_warnings.append(_line(r))
+        (response_errors if r["critical"] else response_warnings).append(_line(r))
     response_warnings.extend(_line(r) for r in warned)
-    manual_review = [_line(r) for r in skipped]
+
+    manual_review = []
+    for r in skipped:
+        if r["critical"]:
+            response_warnings.append(f"{r.get('name', 'Check')}: not verified")
+        else:
+            manual_review.append(_line(r))
 
     overall = round(len(passed) / len(ran) * 100) if ran else 0
     status = "fail" if response_errors else ("warning" if response_warnings else "pass")

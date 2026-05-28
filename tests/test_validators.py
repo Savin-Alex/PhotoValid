@@ -36,6 +36,35 @@ def test_bio_no_face_returns_failed_or_skipped_detection():
     assert detection["status"] in {"fail", "skipped"}
 
 
+def test_manual_overrides_do_not_assert_face_or_one_person():
+    arr = np.full((600, 600, 3), 255, dtype=np.uint8)
+
+    results = BioValidator(arr).run(manual_overrides={"top": 0.15, "eye": 0.40, "chin": 0.80})
+    by = {r["name"]: r for r in results}
+
+    # Manual line adjustment must NOT certify a face / one person.
+    assert by["Face Detection"]["status"] == "skipped"
+    assert by["One Person Only"]["status"] == "skipped"
+    # But head height / eye level ARE measured from the manual lines.
+    assert "Head Height" in by and by["Head Height"]["status"] in {"pass", "warning", "fail"}
+    assert "Eye Level" in by and by["Eye Level"]["status"] in {"pass", "warning", "fail"}
+
+
+def test_model_init_failure_yields_named_skipped_checks(monkeypatch):
+    # MediaPipe imports but the graph fails to build (e.g. no GL on a headless host).
+    monkeypatch.setattr(bio_module, "MP_AVAILABLE", True)
+    monkeypatch.setattr(bio_module, "_get_face_detection", lambda: None)
+    monkeypatch.setattr(bio_module, "_get_face_mesh", lambda: None)
+
+    arr = np.full((600, 600, 3), 255, dtype=np.uint8)
+    results = BioValidator(arr).run()
+    by = {r["name"]: r for r in results}
+
+    # Required checks must be present and skipped (named), never a generic skip or a pass.
+    for name in ("Face Detection", "One Person Only", "Head Height", "Eye Level", "Head Centering"):
+        assert by[name]["status"] == "skipped", name
+
+
 def test_bio_multiple_faces_fails_one_person(monkeypatch):
     arr = np.full((600, 600, 3), 255, dtype=np.uint8)
 

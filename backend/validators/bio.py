@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Dict, Any, List, Optional, Tuple
+import logging
 import math
 import threading
 import numpy as np
@@ -28,6 +29,8 @@ except Exception:
 # ✅ Debug mode: Set to True to enable visual debug markers
 DEBUG = False
 
+logger = logging.getLogger("photo_valid.bio")
+
 # Creating MediaPipe graphs is expensive; rebuilding them on every request adds
 # large latency. Cache one instance of each model and reuse it across requests.
 # MediaPipe graph objects are NOT thread-safe, so every .process() call is
@@ -39,25 +42,36 @@ _FACE_MESH = None
 
 
 def _get_face_detection():
+    """Lazily build the cached FaceDetection graph. Returns None if construction
+    fails (e.g. no GL context on a headless host) so callers can degrade cleanly."""
     global _FACE_DETECTION
     if _FACE_DETECTION is None and MP_AVAILABLE and MP_FACE_DETECTION is not None:
-        _FACE_DETECTION = MP_FACE_DETECTION.FaceDetection(
-            model_selection=0,  # Short range for portraits
-            min_detection_confidence=0.5,
-        )
+        try:
+            _FACE_DETECTION = MP_FACE_DETECTION.FaceDetection(
+                model_selection=0,  # Short range for portraits
+                min_detection_confidence=0.5,
+            )
+        except Exception:
+            logger.exception("Failed to initialize MediaPipe FaceDetection")
+            _FACE_DETECTION = None
     return _FACE_DETECTION
 
 
 def _get_face_mesh():
+    """Lazily build the cached FaceMesh graph. Returns None on init failure."""
     global _FACE_MESH
     if _FACE_MESH is None and MP_AVAILABLE and MP_FACE_MESH is not None:
-        _FACE_MESH = MP_FACE_MESH.FaceMesh(
-            static_image_mode=True,
-            max_num_faces=1,
-            refine_landmarks=True,  # Enable iris detection
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        try:
+            _FACE_MESH = MP_FACE_MESH.FaceMesh(
+                static_image_mode=True,
+                max_num_faces=1,
+                refine_landmarks=True,  # Enable iris detection
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+        except Exception:
+            logger.exception("Failed to initialize MediaPipe FaceMesh")
+            _FACE_MESH = None
     return _FACE_MESH
 
 
@@ -91,20 +105,28 @@ class BioValidator:
         self.h, self.w = bgr.shape[:2]
         self.face_count = 0
         self.landmarks = None  # populated by calculate() in auto mode
+        self.detection_failed = False  # True if the model could not init/process
         self.debug_image = bgr.copy() if DEBUG else None
     
     def detect_face_box(self):
         """Return bounding box [xmin, ymin, width, height] or None."""
         if not MP_AVAILABLE or MP_FACE_DETECTION is None or not CV2_AVAILABLE or cv2 is None:
+            self.detection_failed = True
             return None
 
         fd = _get_face_detection()
         if fd is None:
+            self.detection_failed = True
             return None
 
-        rgb = cv2.cvtColor(self.arr, cv2.COLOR_BGR2RGB)
-        with _MP_LOCK:
-            res = fd.process(rgb)
+        try:
+            rgb = cv2.cvtColor(self.arr, cv2.COLOR_BGR2RGB)
+            with _MP_LOCK:
+                res = fd.process(rgb)
+        except Exception:
+            logger.exception("MediaPipe FaceDetection failed to process the image")
+            self.detection_failed = True
+            return None
 
         if not res.detections:
             self.face_count = 0
@@ -132,15 +154,22 @@ class BioValidator:
     def detect_landmarks(self):
         """Return face mesh landmarks or None."""
         if not MP_AVAILABLE or MP_FACE_MESH is None or not CV2_AVAILABLE or cv2 is None:
+            self.detection_failed = True
             return None
 
         fm = _get_face_mesh()
         if fm is None:
+            self.detection_failed = True
             return None
 
-        rgb = cv2.cvtColor(self.arr, cv2.COLOR_BGR2RGB)
-        with _MP_LOCK:
-            res = fm.process(rgb)
+        try:
+            rgb = cv2.cvtColor(self.arr, cv2.COLOR_BGR2RGB)
+            with _MP_LOCK:
+                res = fm.process(rgb)
+        except Exception:
+            logger.exception("MediaPipe FaceMesh failed to process the image")
+            self.detection_failed = True
+            return None
 
         if not res.multi_face_landmarks:
             return None
@@ -228,9 +257,10 @@ class BioValidator:
         Supports manual overrides (normalized Y coordinates 0-1).
         Always returns valid faceBox for frontend overlay.
         """
-        # ✅ MANUAL MODE: If manual overrides provided, use them
+        # ✅ MANUAL MODE: If manual overrides provided, use them.
+        # NOTE: manual mode does NOT detect a face — face_count stays 0 so we never
+        # imply "one face detected" from manually placed guide lines.
         if manual_overrides:
-            self.face_count = 1
             top_y = float(manual_overrides.get('top', 0.18)) * self.h
             eye_y = float(manual_overrides.get('eye', 0.60)) * self.h
             chin_y = float(manual_overrides.get('chin', 0.86)) * self.h
@@ -772,47 +802,148 @@ class BioValidator:
                           fix='Hold your head straight and level (not tilted left or right).',
                           extra={"tilt_degrees": angle})
 
-    def run(self, manual_overrides: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
-        """
-        Run all biometric validations.
-        Supports manual overrides for hybrid mode.
-        """
-        if not MP_AVAILABLE:
-            return [
-                json_param(
-                    "Face Detection",
-                    "Skipped",
-                    "MediaPipe + OpenCV available",
-                    False,
-                    status="skipped",
-                    rec="MediaPipe face detection is unavailable in this runtime.",
-                    fix="Use Python 3.11.9 on Render and install mediapipe plus opencv-python-headless.",
-                ),
-                self.check_background(),
-            ]
+    def _headgear_skip(self) -> Dict[str, Any]:
+        return json_param(
+            'Headgear', 'Not auto-checked', 'None (except daily religious)', False, status='skipped',
+            rec='Hats/head coverings are not auto-detected — please verify manually.',
+            fix='Remove any hat or head covering unless worn daily for religious reasons.')
 
-        # Calculate measurements (auto or manual)
+    def _skipped_biometrics(self, reason: str) -> List[Dict[str, Any]]:
+        """Named 'skipped' results for the required biometric checks when face
+        analysis cannot run (model unavailable or init/process failure).
+
+        Critical checks reported as skipped force a non-pass overall status in
+        main._summarize_response — they must never look like a clean pass.
+        """
+        fix = ("Use a clear, face-forward photo, and ensure the server has MediaPipe + "
+               "opencv-python-headless on Python 3.11.")
+        required = [
+            ("Face Detection", "One face detected"),
+            ("One Person Only", "Exactly one face"),
+            ("Head Height", "50–69% of image height"),
+            ("Eye Level", "56–69% from bottom"),
+            ("Head Centering", "Centered ±5%"),
+            ("Sharpness", "≥80 (sharp focus)"),
+            ("Face Lighting", "Even lighting"),
+        ]
+        results = [
+            json_param(name, "Not checked", expected, False, status="skipped", rec=reason, fix=fix)
+            for name, expected in required
+        ]
+        # Background is corner-based and does not need a detected face.
+        results.append(self.check_background())
+        # The remaining checks self-skip when landmarks are unavailable.
+        results.append(self.check_redeye())
+        results.append(self.check_glasses())
+        results.append(self._headgear_skip())
+        results.append(self.check_eyes_open())
+        results.append(self.check_gaze())
+        results.append(self.check_expression())
+        results.append(self.check_head_tilt())
+        return results
+
+    def _manual_results(self, manual_overrides: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Manual mode: the user dragged the top/eye/chin guide lines. We measure
+        head height and eye level from those lines, but no face was detected — so
+        Face Detection and One Person Only are reported as unverified (skipped),
+        never as a pass, and centering can't be derived from horizontal lines.
+        """
         calc = self.calculate(manual_overrides)
         fb = calc.get("faceBox")
         hr = calc.get("head_ratio")
         el = calc.get("eye_level")
+        note = " (measured from your manually placed lines; face presence was not auto-verified)"
+
+        results = [
+            json_param("Face Detection", "Manual mode", "One face detected", False, status="skipped",
+                       rec="Face was not auto-detected in manual mode.",
+                       fix="Run automatic validation (clear the manual lines) to verify a face is present."),
+            json_param("One Person Only", "Manual mode", "Exactly one face", False, status="skipped",
+                       rec="Number of people was not auto-verified in manual mode.",
+                       fix="Ensure only the applicant is visible; run automatic validation to confirm."),
+        ]
+        if hr is not None:
+            ok = 50 <= hr <= 69
+            warn = (45 <= hr < 50) or (69 < hr <= 72)
+            results.append(json_param("Head Height", f"{hr:.1f}% (manual)", "50–69% of image height", ok, warn=warn,
+                                      rec="Top of head to chin must cover 50–69% of image." + note,
+                                      fix="Drag the top and chin lines to your true head extent, or reframe.",
+                                      extra={"head_height_pct": hr, "faceBox": fb, "manual": True}))
+        if el is not None:
+            ok = 56 <= el <= 69
+            warn = (53 <= el < 56) or (69 < el <= 72)
+            results.append(json_param("Eye Level", f"{el:.1f}% (manual)", "56–69% from bottom", ok, warn=warn,
+                                      rec="Eyes should sit 56–69% from the bottom." + note,
+                                      fix="Drag the eye line to your eyes, or reframe.",
+                                      extra={"eye_level_pct": el, "faceBox": fb, "manual": True}))
+        results.append(json_param("Head Centering", "Manual mode", "Centered ±5%", False, status="skipped",
+                                  rec="Centering can't be measured from the horizontal manual lines.",
+                                  fix="Run automatic validation to measure horizontal centering."))
+        results.append(self.check_background())
+        results.append(self.check_sharpness(fb))
+        results.append(self.check_lighting(fb))
+        # Heuristics need landmarks (unavailable in manual mode) -> self-skip.
+        results.append(self.check_redeye())
+        results.append(self.check_glasses())
+        results.append(self._headgear_skip())
+        results.append(self.check_eyes_open())
+        results.append(self.check_gaze())
+        results.append(self.check_expression())
+        results.append(self.check_head_tilt())
+        return results
+
+    def run(self, manual_overrides: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+        """Run all biometric validations (auto), or measure manually placed lines.
+
+        On model unavailability/failure the required checks are emitted as named
+        'skipped' results (never silently dropped, never a generic skip).
+        """
+        if manual_overrides:
+            return self._manual_results(manual_overrides)
+
+        if not MP_AVAILABLE:
+            return self._skipped_biometrics(
+                "Face analysis is unavailable in this runtime (MediaPipe/OpenCV not installed).")
+
+        try:
+            calc = self.calculate(None)
+        except Exception:
+            logger.exception("Biometric analysis raised")
+            self.detection_failed = True
+            calc = None
+
+        if self.detection_failed or calc is None:
+            return self._skipped_biometrics(
+                "Face analysis could not run in this environment; please verify the photo manually.")
+
+        fb = calc.get("faceBox")
+        hr = calc.get("head_ratio")
+        el = calc.get("eye_level")
         co = calc.get("center_offset")
-        
+
         results = []
-        
-        # Face detection check
+
+        # Genuine no-face: the model ran but found nothing -> FAIL (critical).
         if fb is None or fb.get("method") == "fallback":
             results.append(json_param(
-                "Face Detection",
-                "Not found",
-                "One face detected",
-                False,
+                "Face Detection", "Not found", "One face detected", False,
                 rec="No face detected; retake clearly face-forward.",
-                fix="Ensure face is visible, well-lit, and facing camera."
-            ))
+                fix="Ensure the face is visible, well-lit, and facing the camera."))
+            results.append(json_param(
+                "One Person Only", "Not found", "Exactly one face", False,
+                rec="No face detected, so one-person could not be confirmed.",
+                fix="Retake with exactly one person, facing the camera."))
             results.append(self.check_background())
             return results
-        
+
+        # Face detected -> always emit an explicit Face Detection result.
+        results.append(json_param(
+            "Face Detection",
+            "1 face" if self.face_count <= 1 else f"{self.face_count} faces",
+            "One face detected", self.face_count >= 1,
+            rec="No face detected; retake clearly face-forward.",
+            fix="Ensure the face is visible, well-lit, and facing the camera."))
+
         # One person check
         one_person = self.face_count == 1
         results.append(json_param(
@@ -879,10 +1010,7 @@ class BioValidator:
         # eyeglasses in particular are a top DV disqualifier (prohibited since 2016-11-01).
         results.append(self.check_redeye())
         results.append(self.check_glasses())
-        results.append(json_param(
-            'Headgear', 'Not auto-checked', 'None (except daily religious)', False, status='skipped',
-            rec='Hats/head coverings are not auto-detected — please verify manually.',
-            fix='Remove any hat or head covering unless worn daily for religious reasons.'))
+        results.append(self._headgear_skip())
         results.append(self.check_eyes_open())
         results.append(self.check_gaze())
         results.append(self.check_expression())
