@@ -880,8 +880,14 @@ class BioValidator:
                                   rec="Centering can't be measured from the horizontal manual lines.",
                                   fix="Run automatic validation to measure horizontal centering."))
         results.append(self.check_background())
-        results.append(self.check_sharpness(fb))
-        results.append(self.check_lighting(fb))
+        # Without a detected face box, sharpness/lighting on the full-width manual
+        # box are not reliable face checks -> report as skipped (manual review).
+        results.append(json_param("Sharpness", "Manual mode", "≥80 (sharp focus)", False, status="skipped",
+                                  rec="Sharpness not auto-measured in manual mode (no detected face).",
+                                  fix="Run automatic validation for a reliable face-sharpness check."))
+        results.append(json_param("Face Lighting", "Manual mode", "Even lighting", False, status="skipped",
+                                  rec="Lighting not auto-measured in manual mode (no detected face).",
+                                  fix="Run automatic validation for a reliable face-lighting check."))
         # Heuristics need landmarks (unavailable in manual mode) -> self-skip.
         results.append(self.check_redeye())
         results.append(self.check_glasses())

@@ -23,14 +23,17 @@ they drift. This guide explains the surrounding context only.
 
 - **App (frontend + API)**: `https://<service>.onrender.com/`
 - **Validation endpoint**: `POST https://<service>.onrender.com/api/validate`
-- **Health probe**: `GET /healthz` returns JSON with app version, Python version,
-  and OpenCV/MediaPipe availability + model-init status — use this for Render's
-  health check. (`GET /` also returns `200` and serves the UI; `GET /api/validate`
-  returns `404` since the endpoint is POST-only.)
+- **Health probe**: `GET /healthz` — lightweight liveness (status, version, Python,
+  OpenCV/MediaPipe availability; no model init, no side effects). Use this for
+  Render's health check.
+- **Readiness**: `GET /readyz` — initializes the CV models once (cached) and reports
+  `ready` + per-model status. Heavier; use for a readiness/warm probe, not liveness.
+- (`GET /` also returns `200` and serves the UI; `GET /api/validate` returns `404`
+  since the endpoint is POST-only.)
 
 ```bash
-curl -s https://<service>.onrender.com/healthz    # {"status":"ok", "mediapipe_available":true, ...}
-curl -I https://<service>.onrender.com            # GET / -> 200 (UI loads)
+curl -s https://<service>.onrender.com/healthz    # {"status":"ok","mediapipe_available":true,...}
+curl -s https://<service>.onrender.com/readyz     # {"ready":true,"face_mesh_ready":true,...}
 ```
 
 ## Locking down CORS (optional)

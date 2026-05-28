@@ -62,6 +62,11 @@ CRITICAL_CHECKS = {
     "One Person Only",
     "Head Height",
     "Eye Level",
+    # Whole-validator crash fallbacks (from _safe_validator). A crashed Technical
+    # or Biometric validator means must-pass checks never ran -> must not look like
+    # a clean pass. (Tamper is advisory, so its fallback is intentionally NOT here.)
+    "Technical Validation",
+    "Biometric Validation",
 }
 
 
@@ -219,13 +224,26 @@ def _validate_raw(
 
 @app.get("/healthz")
 async def healthz():
-    """Liveness/readiness probe: app version, runtime, and CV/model status."""
-    fd_ready = await run_in_threadpool(lambda: _bio._get_face_detection() is not None)
-    fm_ready = await run_in_threadpool(lambda: _bio._get_face_mesh() is not None)
+    """Lightweight liveness probe — no model init, no side effects."""
     return {
         "status": "ok",
         "version": __version__,
         "python": platform.python_version(),
+        "opencv_available": _bio.CV2_AVAILABLE,
+        "mediapipe_available": _bio.MP_AVAILABLE,
+    }
+
+
+@app.get("/readyz")
+async def readyz():
+    """Readiness probe — initializes the CV models once (cached) and reports status.
+
+    Separate from /healthz so liveness checks stay cheap and side-effect-free.
+    """
+    fd_ready = await run_in_threadpool(lambda: _bio._get_face_detection() is not None)
+    fm_ready = await run_in_threadpool(lambda: _bio._get_face_mesh() is not None)
+    return {
+        "ready": bool(_bio.CV2_AVAILABLE and _bio.MP_AVAILABLE and fd_ready and fm_ready),
         "opencv_available": _bio.CV2_AVAILABLE,
         "mediapipe_available": _bio.MP_AVAILABLE,
         "face_detection_ready": fd_ready,

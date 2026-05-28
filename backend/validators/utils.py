@@ -154,6 +154,14 @@ def json_param(name: str, value: Any=None, expected: str|None=None,
     if fix and normalized_status != 'pass':
         d["how_to_fix"] = fix
     if extra:
-        d.update(_json_safe(extra))
+        # Keep extension data nested under "extra" to avoid colliding with canonical
+        # keys (status/value/critical/…). faceBox stays top-level because the
+        # frontend overlay and the PDF report read it there (legacy compat).
+        safe = _json_safe(extra)
+        face_box = safe.pop("faceBox", None) if isinstance(safe, dict) else None
+        if safe:
+            d["extra"] = safe
+        if face_box is not None:
+            d["faceBox"] = face_box
     return d
 

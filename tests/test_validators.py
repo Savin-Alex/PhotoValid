@@ -48,6 +48,18 @@ def test_manual_overrides_do_not_assert_face_or_one_person():
     # But head height / eye level ARE measured from the manual lines.
     assert "Head Height" in by and by["Head Height"]["status"] in {"pass", "warning", "fail"}
     assert "Eye Level" in by and by["Eye Level"]["status"] in {"pass", "warning", "fail"}
+    # Sharpness/lighting aren't reliable without a detected face box -> skipped.
+    assert by["Sharpness"]["status"] == "skipped"
+    assert by["Face Lighting"]["status"] == "skipped"
+
+
+def test_json_param_nests_extra_keeps_facebox_top_level():
+    fb = {"top": 1, "bottom": 2}
+    d = json_param("X", "v", "e", True, extra={"head_height_pct": 61.2, "faceBox": fb})
+    assert d["extra"] == {"head_height_pct": 61.2}
+    assert d["faceBox"] == fb            # legacy top-level for frontend overlay + PDF
+    assert "head_height_pct" not in d    # no longer flattened onto the check object
+    assert "faceBox" not in d["extra"]
 
 
 def test_model_init_failure_yields_named_skipped_checks(monkeypatch):

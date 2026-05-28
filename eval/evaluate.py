@@ -100,6 +100,8 @@ def main() -> None:
             times.append(ms)
             status = summary.get("status", "?")
             dist[group][status] += 1
+            if summary.get("ok"):
+                dist[group]["_ok"] += 1  # clean PASS (ok True) — the only "clean accept"
             grp = "acc" if group == "accepted" else "rej"
             for check in summary.get("checks", []):
                 per_check[check.get("name")][grp][check.get("status")] += 1
@@ -109,27 +111,28 @@ def main() -> None:
     run_set(rejected, "rejected")
 
     a, r = len(accepted), len(rejected)
-    # Detector framing: positive = non-compliant, detection = status == "fail".
-    tp = dist["rejected"]["fail"]                 # bad photo correctly failed
-    fn = r - tp                                   # bad photo NOT failed -> FALSE ACCEPT
-    fp = dist["accepted"]["fail"]                 # good photo wrongly failed
-    tn = a - fp
+    rej_clean = dist["rejected"]["_ok"]      # bad photo got a clean PASS = TRUE false accept
+    rej_fail = dist["rejected"]["fail"]
+    rej_warn = dist["rejected"]["warning"]
+    acc_fail = dist["accepted"]["fail"]      # good photo hard-failed = false reject
 
-    precision = tp / (tp + fp) if (tp + fp) else float("nan")
-    recall = tp / (tp + fn) if (tp + fn) else float("nan")
-    f1 = (2 * precision * recall / (precision + recall)
-          if precision == precision and recall == recall and (precision + recall) else float("nan"))
+    # Two recall views (positive = non-compliant). A "warning" is NOT a clean accept
+    # (ok is False), so non-pass recall counts warnings as "flagged".
+    hard_recall = rej_fail / r if r else float("nan")             # detection = status 'fail'
+    nonpass_recall = (r - rej_clean) / r if r else float("nan")   # detection = not a clean pass (ok False)
+    precision = rej_fail / (rej_fail + acc_fail) if (rej_fail + acc_fail) else float("nan")
 
     print("\n=== Verdict distribution ===")
-    print(f"  accepted/  pass={dist['accepted']['pass']}  warning={dist['accepted']['warning']}  fail={dist['accepted']['fail']}  (fails are FALSE REJECTS)")
-    print(f"  rejected/  pass={dist['rejected']['pass']}  warning={dist['rejected']['warning']}  fail={dist['rejected']['fail']}  (pass/warning are FALSE ACCEPTS)")
+    print(f"  accepted/  pass={dist['accepted']['pass']}  warning={dist['accepted']['warning']}  fail={acc_fail}  (fail = false reject)")
+    print(f"  rejected/  pass={dist['rejected']['pass']}  warning={rej_warn}  fail={rej_fail}  (clean pass = false accept)")
 
-    print("\n=== Detector metrics (positive = non-compliant, detection = status 'fail') ===")
-    print(f"  Recall   (bad photos caught):       {recall:.2f}   <- safety: higher = fewer false accepts")
-    print(f"  Precision(of failed, truly bad):    {precision:.2f}")
-    print(f"  F1:                                 {f1:.2f}")
-    print(f"  FALSE ACCEPTS (bad photo not failed): {fn}/{r}")
-    print(f"  False rejects (good photo failed):    {fp}/{a}")
+    print("\n=== Detector metrics (positive = non-compliant) ===")
+    print(f"  Hard-fail recall (detection = status 'fail'):     {hard_recall:.2f}")
+    print(f"  Non-pass recall  (detection = not a clean pass):  {nonpass_recall:.2f}  (warnings count as flagged)")
+    print(f"  Precision of hard fails:                          {precision:.2f}")
+    print(f"  TRUE FALSE ACCEPTS (bad photo got a clean PASS):  {rej_clean}/{r}  <- the dangerous error")
+    print(f"  False rejects (good photo hard-failed):           {acc_fail}/{a}")
+    print(f"  (bad photos that only warned, not failed:         {rej_warn}/{r})")
     if times:
         ts = sorted(times)
         p90 = ts[max(0, int(len(ts) * 0.9) - 1)]

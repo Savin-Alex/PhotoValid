@@ -67,6 +67,30 @@ def test_critical_skipped_forces_warning_not_pass():
     assert not out["errors"]
 
 
+def test_category_crash_fallback_is_critical_not_pass():
+    # A whole-validator crash (generic "<Category> Validation" skipped) must NOT
+    # yield a clean pass — Technical/Biometric fallbacks are critical.
+    technical = [json_param("Technical Validation", "Skipped", "Validator completed", False,
+                            status="skipped", rec="crashed")]
+    biometric = [json_param("Face Detection", "1 face", "One face detected", True)]
+
+    out = _summarize_response(technical, biometric, [])
+
+    assert out["status"] == "warning"
+    assert out["ok"] is False
+
+
+def test_tamper_crash_fallback_is_not_critical():
+    # Tamper is advisory: its crash fallback should NOT block a pass.
+    technical = [json_param("File Size", "10 KB", "<= 240 KB", True)]
+    tamper = [json_param("Tamper Validation", "Skipped", "Validator completed", False,
+                         status="skipped", rec="crashed")]
+
+    out = _summarize_response(technical, [], tamper)
+
+    assert out["status"] == "pass"
+
+
 def test_noncritical_skip_does_not_block_pass():
     technical = [json_param("File Size", "10 KB", "<= 240 KB", True)]
     biometric = [json_param("Red-Eye", "Not auto-checked", "No red-eye", False, status="skipped")]

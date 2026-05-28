@@ -95,13 +95,24 @@ def test_report_returns_pdf():
     assert len(response.content) > 1000  # a real document, not an empty stub
 
 
-def test_healthz_reports_status():
+def test_healthz_is_lightweight():
     response = client.get("/healthz")
 
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    for key in ("version", "python", "opencv_available", "mediapipe_available",
+    for key in ("version", "python", "opencv_available", "mediapipe_available"):
+        assert key in body
+    # Liveness must NOT report (or trigger) model init.
+    assert "face_detection_ready" not in body
+
+
+def test_readyz_reports_model_status():
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    body = response.json()
+    for key in ("ready", "opencv_available", "mediapipe_available",
                 "face_detection_ready", "face_mesh_ready"):
         assert key in body
 

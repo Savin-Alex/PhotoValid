@@ -788,10 +788,10 @@ async function runValidate(file, overrides){
   
   const res = await fetch(`${API_BASE}/validate`, {method:'POST', body:fd});
   const payload = normalizeResponse(await res.json().catch(()=>({})));
-  if(!res.ok) {
-    const message = payload.errors[0] || `HTTP ${res.status}`;
-    throw new Error(message);
-  }
+  // Don't throw on non-2xx: the backend returns canonical JSON (errors/warnings/
+  // manual_review) for corrupt/oversize uploads too, so let the caller render it.
+  payload.http_ok = res.ok;
+  payload.http_status = res.status;
   return payload;
 }
 
@@ -855,7 +855,17 @@ validateBtn.addEventListener('click', async()=>{
     lastUsedOverrides = overrides || null;
     const j = await runValidate(currentFile, overrides);
     lastValidationResult = j;
-    
+
+    if(!j.http_ok){
+      // Backend rejected the upload (corrupt/oversize/etc.) but returned canonical
+      // JSON — surface its errors/warnings as banners and clear stale results.
+      updateScoreMeter(0);
+      renderRows([]);
+      renderBanners(j);
+      document.getElementById('downloadPdfBtn').style.display = 'none';
+      return;
+    }
+
     // Preserve exact manual percentages after Save & Re-check; otherwise use detected pixels.
     const hh = (j.checks||j.biometric||[]).find(p=>(p.parameter||p.name)==='Head Height' && p.faceBox);
     if(overrides){
