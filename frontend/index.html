@@ -29,6 +29,15 @@
   .preview-wrap img{max-width:100%;height:auto;display:block;user-select:none;-webkit-user-drag:none}
   canvas#overlay{position:absolute;inset:0;pointer-events:auto;touch-action:none}
 
+  /* Summary banners (top-level errors / warnings / manual review) */
+  .banner{border:1px solid var(--border);border-left-width:4px;border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:13px;background:var(--card)}
+  .banner-title{font-weight:700;margin-bottom:4px}
+  .banner ul{margin:0;padding-left:18px}
+  .banner ul li{margin:2px 0;color:var(--sub)}
+  .banner.fail{border-left-color:var(--fail)} .banner.fail .banner-title{color:var(--fail)}
+  .banner.warn{border-left-color:var(--warn)} .banner.warn .banner-title{color:var(--warn)}
+  .banner.review{border-left-color:var(--muted)} .banner.review .banner-title{color:var(--sub)}
+
   /* Compact validations */
   .results{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;margin-top:16px;transition:all .3s}
   .results h3{margin:0 0 8px 0;font-size:16px}
@@ -141,6 +150,8 @@
 
         <button id="downloadPdfBtn" class="btn" style="display:none;width:100%;margin-bottom:10px" data-i18n="download_pdf">⬇ Download report (PDF)</button>
 
+        <div id="banners" style="display:none"></div>
+
         <div class="results">
           <h3 data-i18n="checks_title">Validation Results</h3>
           <div class="rows" id="rows">
@@ -168,6 +179,7 @@ const I18N = {
     new_photo:"New Photo",
     download_pdf:"⬇ Download report (PDF)", downloading:"Preparing PDF…",
     overall_quality:"Overall quality", checks_title:"Validation Results",
+    banner_errors:"Must be fixed", banner_warnings:"Warnings", banner_review:"Please verify manually",
     no_results:"Upload and validate a photo to see results",
     disclaimer:"⚠️ This tool provides automated estimates based on DV Lottery guidelines. Always review your final photo before submission.",
     validating:"Validating...",
@@ -245,6 +257,7 @@ const I18N = {
     new_photo:"Новое фото",
     download_pdf:"⬇ Скачать отчёт (PDF)", downloading:"Готовим PDF…",
     overall_quality:"Общая оценка", checks_title:"Результаты проверки",
+    banner_errors:"Необходимо исправить", banner_warnings:"Предупреждения", banner_review:"Проверьте вручную",
     no_results:"Загрузите и проверьте фото чтобы увидеть результаты",
     disclaimer:"⚠️ Этот инструмент выполняет автоматическую оценку по требованиям DV Lottery. Всегда проверяйте финальное фото перед отправкой.",
     validating:"Проверка...",
@@ -746,6 +759,27 @@ function renderRows(items){
   }).join('');
 }
 
+// Render top-level summary banners (errors / warnings / manual review)
+function renderBanners(j){
+  const dict = I18N[LANG] || I18N.en;
+  const tr = k => (dict[k] || I18N.en[k] || k);
+  const sections = [
+    {items: j && j.errors,        cls: 'fail',   label: tr('banner_errors')},
+    {items: j && j.warnings,      cls: 'warn',   label: tr('banner_warnings')},
+    {items: j && j.manual_review, cls: 'review', label: tr('banner_review')}
+  ];
+  let html = '';
+  sections.forEach(s=>{
+    const items = Array.isArray(s.items) ? s.items : [];
+    if(!items.length) return;
+    html += `<div class="banner ${s.cls}"><div class="banner-title">${escapeHTML(s.label)}</div><ul>`
+          + items.map(x=>`<li>${escapeHTML(x)}</li>`).join('') + `</ul></div>`;
+  });
+  const el = document.getElementById('banners');
+  el.innerHTML = html;
+  el.style.display = html ? 'block' : 'none';
+}
+
 // Validate with backend API
 async function runValidate(file, overrides){
   const fd = new FormData();
@@ -837,6 +871,7 @@ validateBtn.addEventListener('click', async()=>{
     updateScoreMeter(j.overall_score);
     const items = [...(j.technical||[]), ...(j.biometric||[]), ...(j.tamper||[])];
     renderRows(items);
+    renderBanners(j);
     drawOverlay();
     document.getElementById('downloadPdfBtn').style.display = 'block';
     
@@ -939,6 +974,7 @@ document.getElementById('newPhotoBtn').addEventListener('click', () => {
   
   // Reset validation results
   rows.innerHTML = '<div style="text-align:center;color:var(--sub);padding:20px" data-i18n="no_results">Upload and validate a photo to see results</div>';
+  renderBanners(null);
   updateScoreMeter(0);
   scorePct.textContent = '–%';
   
@@ -966,6 +1002,7 @@ document.getElementById('langSelect').addEventListener('change', e=>{
     const items = [...(lastValidationResult.technical||[]), ...(lastValidationResult.biometric||[]), ...(lastValidationResult.tamper||[])];
     renderRows(items);
   }
+  renderBanners(lastValidationResult);
 });
 
 // Dark mode toggle
