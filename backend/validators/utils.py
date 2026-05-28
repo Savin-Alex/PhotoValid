@@ -58,18 +58,40 @@ def sharpness_laplacian(arr: np.ndarray) -> float:
     return float(np.clip(val/10.0, 0, 100))
 
 def exif_capture_datetime(img: Image.Image) -> dt.datetime | None:
+    return _parse_exif_datetime(img.info.get('exif', b''))
+
+def exif_capture_datetime_from_raw(raw: bytes) -> dt.datetime | None:
+    """Read the capture date straight from the ORIGINAL upload bytes.
+
+    More reliable than reading the in-memory PIL image: by the time validators
+    run, the image has been through exif_transpose() + convert("RGB"), which can
+    drop or alter the EXIF block. piexif.load() accepts the raw JPEG bytes.
+    """
     try:
-        exif = piexif.load(img.info.get('exif', b''))
-        dt_str = exif.get('0th', {}).get(piexif.ImageIFD.DateTime)
-        if not dt_str:
-            dt_str = exif.get('Exif', {}).get(piexif.ExifIFD.DateTimeOriginal)
+        return _parse_exif_datetime(piexif.load(raw))
+    except Exception:
+        return None
+
+def _parse_exif_datetime(exif_or_bytes) -> dt.datetime | None:
+    try:
+        exif = exif_or_bytes if isinstance(exif_or_bytes, dict) else piexif.load(exif_or_bytes)
+    except Exception:
+        return None
+    # Prefer DateTimeOriginal (when the shot was taken) over the 0th DateTime.
+    candidates = [
+        ('Exif', piexif.ExifIFD.DateTimeOriginal),
+        ('Exif', piexif.ExifIFD.DateTimeDigitized),
+        ('0th', piexif.ImageIFD.DateTime),
+    ]
+    for ifd, tag in candidates:
+        dt_str = exif.get(ifd, {}).get(tag)
         if isinstance(dt_str, bytes):
             dt_str = dt_str.decode('utf-8', 'ignore')
         if dt_str:
-            # format 'YYYY:MM:DD HH:MM:SS'
-            return dt.datetime.strptime(dt_str, "%Y:%m:%d %H:%M:%S")
-    except Exception:
-        return None
+            try:
+                return dt.datetime.strptime(dt_str.strip(), "%Y:%m:%d %H:%M:%S")
+            except ValueError:
+                continue
     return None
 
 def months_between(a: dt.datetime, b: dt.datetime) -> float:

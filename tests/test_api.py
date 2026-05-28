@@ -95,6 +95,17 @@ def test_report_returns_pdf():
     assert len(response.content) > 1000  # a real document, not an empty stub
 
 
+def test_healthz_reports_status():
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    for key in ("version", "python", "opencv_available", "mediapipe_available",
+                "face_detection_ready", "face_mesh_ready"):
+        assert key in body
+
+
 def test_report_rejects_invalid_image():
     response = client.post(
         "/api/report",

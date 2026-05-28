@@ -3,11 +3,13 @@ from fastapi import FastAPI, File, UploadFile, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from fastapi.concurrency import run_in_threadpool
 from PIL import Image, UnidentifiedImageError
 from typing import Optional, Callable, Tuple
 import io
 import logging
 import os
+import platform
 import sys
 import json
 
@@ -19,7 +21,10 @@ from validators.utils import json_param
 from validators.tech import TechValidator
 from validators.bio import BioValidator
 from validators.tamper import TamperValidator
+from validators import bio as _bio
 from report import build_report_pdf
+
+__version__ = "0.2.0"
 
 logger = logging.getLogger("photo_valid")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -133,7 +138,7 @@ def _safe_validator(category: str, fn: Callable[[], list[dict]]) -> list[dict]:
                 "Validator completed",
                 False,
                 status="skipped",
-                rec=f"{category} validation could not run: {exc}",
+                rec=f"{category} validation could not run. Try a valid JPEG; details are in the server logs.",
                 fix="Try a valid JPEG and check server logs if this persists.",
             )
         ]
@@ -212,21 +217,43 @@ def _validate_raw(
     return 200, summary, pil
 
 
+@app.get("/healthz")
+async def healthz():
+    """Liveness/readiness probe: app version, runtime, and CV/model status."""
+    fd_ready = await run_in_threadpool(lambda: _bio._get_face_detection() is not None)
+    fm_ready = await run_in_threadpool(lambda: _bio._get_face_mesh() is not None)
+    return {
+        "status": "ok",
+        "version": __version__,
+        "python": platform.python_version(),
+        "opencv_available": _bio.CV2_AVAILABLE,
+        "mediapipe_available": _bio.MP_AVAILABLE,
+        "face_detection_ready": fd_ready,
+        "face_mesh_ready": fm_ready,
+    }
+
+
 @app.post("/api/validate")
 async def validate(file: UploadFile = File(...), overrides: Optional[str] = Form(None)):
     raw = await file.read()
-    status_code, summary, _ = _validate_raw(raw, file.content_type, overrides)
+    # CV work is CPU-bound and synchronous; run it off the event loop so it
+    # doesn't block health checks / static serving / other requests.
+    status_code, summary, _ = await run_in_threadpool(
+        _validate_raw, raw, file.content_type, overrides
+    )
     return JSONResponse(status_code=status_code, content=summary)
 
 
 @app.post("/api/report")
 async def report(file: UploadFile = File(...), overrides: Optional[str] = Form(None)):
     raw = await file.read()
-    status_code, summary, pil = _validate_raw(raw, file.content_type, overrides)
+    status_code, summary, pil = await run_in_threadpool(
+        _validate_raw, raw, file.content_type, overrides
+    )
     if status_code != 200 or pil is None:
         return JSONResponse(status_code=status_code, content=summary)
     try:
-        pdf = build_report_pdf(pil, summary)
+        pdf = await run_in_threadpool(build_report_pdf, pil, summary)
     except Exception:
         logger.exception("PDF report generation failed")
         return JSONResponse(

@@ -4,7 +4,7 @@ import math
 from typing import Dict, Any
 from PIL import Image
 import numpy as np
-from .utils import is_grayscale, brightness, contrast, exif_capture_datetime, months_between, json_param
+from .utils import is_grayscale, brightness, contrast, exif_capture_datetime_from_raw, months_between, json_param
 
 # Sharpness is measured on the face region in bio.py (Laplacian variance). The old
 # full-image "normalized" score lived here but was miscalibrated (its threshold was
@@ -163,7 +163,9 @@ class TechValidator:
 
     def exif_age(self) -> Dict[str,Any]:
         from datetime import datetime
-        taken = exif_capture_datetime(self.img)
+        # Read from the ORIGINAL bytes, not self.img (which has been EXIF-transposed
+        # and RGB-converted upstream and may have lost its metadata).
+        taken = exif_capture_datetime_from_raw(self.raw)
         if not taken:
             # No capture date in metadata. Do NOT fall back to the file's
             # modification time — that reflects when the file was saved/uploaded,

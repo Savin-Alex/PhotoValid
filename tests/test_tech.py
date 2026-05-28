@@ -128,3 +128,22 @@ def test_brightness_measured_on_center_not_whole_image():
 def test_run_includes_compression_ratio():
     names = [r["name"] for r in _tv().run()]
     assert "Compression Ratio" in names
+
+
+def test_exif_age_reads_date_from_raw_bytes():
+    import piexif
+    from datetime import datetime
+
+    exif_bytes = piexif.dump(
+        {"Exif": {piexif.ExifIFD.DateTimeOriginal: datetime.now().strftime("%Y:%m:%d %H:%M:%S")}}
+    )
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 600), (120, 60, 30)).save(buf, format="JPEG", exif=exif_bytes)
+    raw = buf.getvalue()
+    # The converted PIL image may have dropped EXIF, but the raw bytes retain it.
+    img = Image.open(io.BytesIO(raw)).convert("RGB")
+
+    res = TechValidator(img, raw, "image/jpeg", "JPEG").exif_age()
+
+    assert res["status"] == "pass"
+    assert "Unknown" not in str(res["value"])

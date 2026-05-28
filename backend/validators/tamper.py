@@ -1,7 +1,9 @@
-import io, math
+import io, logging, math
 import numpy as np
 from PIL import Image, ImageChops, ImageEnhance, ImageStat
 from .utils import json_param
+
+logger = logging.getLogger("photo_valid.tamper")
 
 
 class TamperValidator:
@@ -101,14 +103,15 @@ class TamperValidator:
     def _safe_check(self, fn, name):
         try:
             return fn()
-        except Exception as exc:
+        except Exception:
+            logger.exception("%s check failed", name)
             return json_param(
                 name,
                 "Skipped",
                 "Analyzer completed",
                 False,
                 status="skipped",
-                rec=f"{name} could not run: {exc}",
+                rec=f"{name} could not run; details are in the server logs.",
                 fix="Try a valid JPEG from the original camera/phone and redeploy if this persists.",
             )
 

@@ -23,14 +23,14 @@ they drift. This guide explains the surrounding context only.
 
 - **App (frontend + API)**: `https://<service>.onrender.com/`
 - **Validation endpoint**: `POST https://<service>.onrender.com/api/validate`
-- **Liveness probe**: `GET /` returns `200` (it serves the UI). There is no
-  separate JSON health endpoint; `GET /api/validate` returns `404` (the catch-all
-  static mount at `/` handles it), so use `GET /` for health checks.
+- **Health probe**: `GET /healthz` returns JSON with app version, Python version,
+  and OpenCV/MediaPipe availability + model-init status — use this for Render's
+  health check. (`GET /` also returns `200` and serves the UI; `GET /api/validate`
+  returns `404` since the endpoint is POST-only.)
 
 ```bash
-curl -I https://<service>.onrender.com           # GET / -> 200 (UI loads)
-curl -s -o /dev/null -w '%{http_code}\n' \
-  https://<service>.onrender.com/api/validate     # GET -> 404 (POST-only endpoint)
+curl -s https://<service>.onrender.com/healthz    # {"status":"ok", "mediapipe_available":true, ...}
+curl -I https://<service>.onrender.com            # GET / -> 200 (UI loads)
 ```
 
 ## Locking down CORS (optional)
