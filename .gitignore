@@ -35,4 +35,7 @@ Thumbs.db
 # Local test photos (personal images — not for version control)
 test_photos/
 
+# Evaluation photo set (personal/PII images — keep the harness, not the photos)
+eval/photos/
+
 
